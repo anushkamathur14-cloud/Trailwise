@@ -351,7 +351,7 @@ function StudioInner() {
               <div>
                 <div className="text-xs uppercase tracking-wide text-muted-foreground">Expected next</div>
                 <p className="mt-1 text-xs">
-                  {historic?.stepStats.mostCommonNextEvent
+                  {historic?.stepStats?.mostCommonNextEvent
                     ? labelForEvent(workspaceId, historic.stepStats.mostCommonNextEvent)
                     : "—"}
                 </p>

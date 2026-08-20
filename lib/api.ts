@@ -6,6 +6,8 @@ export async function withDemoDb<T>(handler: () => Promise<T>): Promise<NextResp
   try {
     await ensureDemoData();
     const data = await handler();
+    // Handlers should return plain data. If they already built a Response, pass it through.
+    if (data instanceof NextResponse) return data;
     return NextResponse.json(data);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unknown error";
