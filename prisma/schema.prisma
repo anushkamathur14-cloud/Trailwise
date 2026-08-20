@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Workspace {
+  id          String     @id
+  name        String
+  platform    String
+  productName String
+  createdAt   DateTime   @default(now())
+  people      Person[]
+  events      Event[]
+  sessions    Session[]
+  settings    Settings?
+}
+
+model Person {
+  id                 String        @id
+  workspaceId        String
+  workspace          Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  anonymousId        String?
+  userId             String?
+  displayName        String?
+  email              String?
+  propertiesJson     String        @default("{}")
+  traitsJson         String        @default("{}")
+  acquisitionChannel String?
+  deviceType         String?
+  country            String?
+  segment            String?
+  firstSeenAt        DateTime
+  lastSeenAt         DateTime
+  eventCount         Int           @default(0)
+  sessionCount       Int           @default(0)
+  activated          Boolean       @default(false)
+  converted          Boolean       @default(false)
+  consentState       String        @default("unknown")
+  isTester           Boolean       @default(false)
+  createdAt          DateTime      @default(now())
+  aliases            PersonAlias[]
+  events             Event[]
+  sessions           Session[]
+
+  @@unique([workspaceId, anonymousId])
+  @@unique([workspaceId, userId])
+  @@index([workspaceId, lastSeenAt])
+  @@index([workspaceId, segment])
+  @@index([workspaceId, isTester])
+}
+
+model PersonAlias {
+  id         String   @id
+  personId   String
+  person     Person   @relation(fields: [personId], references: [id], onDelete: Cascade)
+  previousId String
+  kind       String
+  mergedAt   DateTime @default(now())
+
+  @@index([previousId])
+  @@index([personId])
+}
+
+model Session {
+  id          String    @id
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personId    String
+  person      Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  startedAt   DateTime
+  lastEventAt DateTime
+  entryEvent  String?
+  exitEvent   String?
+  eventCount  Int       @default(0)
+  events      Event[]
+
+  @@index([workspaceId, startedAt])
+  @@index([personId, lastEventAt])
+}
+
+model Event {
+  id           String    @id
+  eventId      String    @unique
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  personId     String
+  person       Person    @relation(fields: [personId], references: [id], onDelete: Cascade)
+  sessionId    String?
+  session      Session?  @relation(fields: [sessionId], references: [id])
+  eventName    String
+  timestamp    DateTime
+  platform     String
+  source       String?
+  propertiesJson String  @default("{}")
+  contextJson  String    @default("{}")
+  anonymousId  String?
+  userId       String?
+  createdAt    DateTime  @default(now())
+
+  @@index([workspaceId, timestamp])
+  @@index([workspaceId, eventName])
+  @@index([personId, timestamp])
+  @@index([sessionId])
+}
+
+model Settings {
+  id                String    @id
+  workspaceId       String    @unique
+  workspace         Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  retentionDays     Int       @default(90)
+  denylistJson      String    @default("[\"password\",\"token\",\"secret\",\"authorization\",\"ssn\",\"creditCard\",\"cardNumber\",\"cvv\",\"health\"]")
+  collectionEnabled Boolean   @default(true)
+}
