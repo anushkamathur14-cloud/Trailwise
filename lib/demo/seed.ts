@@ -165,11 +165,23 @@ async function seedWeb(db: PrismaClient, seed: number) {
       push(WEB_EVENTS.pricingViewed, randInt(rng, 1, 4));
       push(WEB_EVENTS.pricingViewed, randInt(rng, 20, 90));
       push(WEB_EVENTS.pricingViewed, randInt(rng, 30, 120));
-      if (chance(rng, 0.35)) push(WEB_EVENTS.signupStarted, 2);
-      if (chance(rng, 0.22)) push(WEB_EVENTS.signupAbandoned, 3);
+      // Some repeat pricing viewers eventually convert (~18%)
+      if (chance(rng, 0.18)) {
+        push(WEB_EVENTS.signupStarted, 3);
+        push(WEB_EVENTS.accountCreated, 2);
+        push(WEB_EVENTS.onboardingStarted, 2);
+        if (chance(rng, 0.55)) {
+          push(WEB_EVENTS.wearableConnected, 4, { provider: pick(rng, [...WEARABLE_PROVIDERS]) });
+        }
+        push(WEB_EVENTS.practicePlanCreated, 3);
+        if (chance(rng, 0.6)) push(WEB_EVENTS.friendInvited, 5);
+      } else {
+        if (chance(rng, 0.4)) push(WEB_EVENTS.signupStarted, 2);
+        if (chance(rng, 0.28)) push(WEB_EVENTS.signupAbandoned, 3);
+      }
     } else {
-      if (chance(rng, 0.7)) push(WEB_EVENTS.pricingViewed, randInt(rng, 1, 6));
-      if (segment === "core" && chance(rng, 0.12)) {
+      if (chance(rng, 0.65)) push(WEB_EVENTS.pricingViewed, randInt(rng, 1, 6));
+      if (segment === "core" && chance(rng, 0.14)) {
         push(WEB_EVENTS.signupStarted, 2);
         push(WEB_EVENTS.signupAbandoned, randInt(rng, 2, 8));
       } else {
@@ -181,64 +193,90 @@ async function seedWeb(db: PrismaClient, seed: number) {
 
           if (segment === "error-prone") {
             push(WEB_EVENTS.wearableConnectionStarted, randInt(rng, 1, 3), { provider });
-            push(WEB_EVENTS.wearableConnectionError, randInt(rng, 1, 4), { provider, error_code: pick(rng, ["oauth_denied", "timeout", "provider_down"]) });
-            if (chance(rng, 0.28)) {
+            push(WEB_EVENTS.wearableConnectionError, randInt(rng, 1, 4), {
+              provider,
+              error_code: pick(rng, ["oauth_denied", "timeout", "provider_down"]),
+            });
+            // Recover and activate ~42%; abandon ~58%
+            if (chance(rng, 0.42)) {
               push(WEB_EVENTS.wearableConnected, randInt(rng, 2, 8), { provider, recovered: true });
               push(WEB_EVENTS.practicePlanCreated, randInt(rng, 2, 6));
-              if (chance(rng, 0.35)) push(WEB_EVENTS.friendInvited, randInt(rng, 2, 20));
+              if (chance(rng, 0.55)) push(WEB_EVENTS.friendInvited, randInt(rng, 2, 20));
+            } else if (chance(rng, 0.2)) {
+              // Recover wearable but stall on invite
+              push(WEB_EVENTS.wearableConnected, randInt(rng, 2, 6), { provider, recovered: true });
+              push(WEB_EVENTS.practicePlanCreated, 3);
             } else {
               push(WEB_EVENTS.onboardingAbandoned, randInt(rng, 1, 6), { last_step: "wearable" });
             }
           } else if (segment === "high-intent") {
-            push(WEB_EVENTS.wearableConnectionStarted, randInt(rng, 1, 3), { provider });
-            push(WEB_EVENTS.wearableConnected, randInt(rng, 1, 4), { provider, firstSession: true });
-            push(WEB_EVENTS.practicePlanCreated, randInt(rng, 1, 5));
-            if (chance(rng, 0.7)) {
-              push(WEB_EVENTS.friendInvited, randInt(rng, 2, 30));
+            // ~22% activate without wearable; ~15% connect but skip invite; rest classic path
+            const pathRoll = rng();
+            if (pathRoll < 0.22) {
+              push(WEB_EVENTS.practicePlanCreated, randInt(rng, 2, 8));
+              push(WEB_EVENTS.friendInvited, randInt(rng, 2, 20));
+            } else {
+              push(WEB_EVENTS.wearableConnectionStarted, randInt(rng, 1, 3), { provider });
+              push(WEB_EVENTS.wearableConnected, randInt(rng, 1, 4), { provider, firstSession: true });
+              push(WEB_EVENTS.practicePlanCreated, randInt(rng, 1, 5));
+              if (pathRoll < 0.85) {
+                push(WEB_EVENTS.friendInvited, randInt(rng, 2, 30));
+              }
             }
-            if (chance(rng, 0.42)) {
+            // Some clean onboarding users still abandon (~12%)
+            if (chance(rng, 0.12) && !personEvents.some((e) => e.eventName === WEB_EVENTS.friendInvited)) {
+              push(WEB_EVENTS.onboardingAbandoned, 2);
+            }
+            if (chance(rng, 0.38)) {
               push(WEB_EVENTS.upgradeViewed, randInt(rng, 10, 80));
               push(WEB_EVENTS.subscriptionStarted, randInt(rng, 1, 8), { plan: "aurelia_plus" });
             }
           } else {
-            if (chance(rng, 0.58)) {
-              push(WEB_EVENTS.wearableConnectionStarted, randInt(rng, 2, 8), { provider });
-              if (chance(rng, 0.78)) {
+            // core: mixed outcomes — wearable optional, slower users sometimes activate
+            const slow = chance(rng, 0.35);
+            if (chance(rng, 0.62)) {
+              push(WEB_EVENTS.wearableConnectionStarted, randInt(rng, slow ? 12 : 2, slow ? 25 : 8), { provider });
+              if (chance(rng, 0.7)) {
                 push(WEB_EVENTS.wearableConnected, randInt(rng, 2, 10), { provider });
-                if (chance(rng, 0.72)) {
-                  push(WEB_EVENTS.practicePlanCreated, randInt(rng, 2, 10));
-                  if (chance(rng, 0.48)) push(WEB_EVENTS.friendInvited, randInt(rng, 5, 80));
-                } else {
-                  push(WEB_EVENTS.practicePlanAbandoned, randInt(rng, 2, 8));
-                }
               } else {
-                push(WEB_EVENTS.wearableConnectionError, randInt(rng, 1, 4), { provider });
-                push(WEB_EVENTS.onboardingAbandoned, randInt(rng, 1, 6));
+                push(WEB_EVENTS.wearableConnectionError, 2, { provider });
+                if (chance(rng, 0.35)) {
+                  push(WEB_EVENTS.wearableConnected, 5, { provider, recovered: true });
+                }
               }
-            } else {
+            }
+            if (chance(rng, 0.55)) {
+              push(WEB_EVENTS.practicePlanCreated, randInt(rng, slow ? 15 : 2, slow ? 40 : 10));
+              if (chance(rng, 0.45)) push(WEB_EVENTS.friendInvited, randInt(rng, 5, 80));
+              else if (chance(rng, 0.25)) push(WEB_EVENTS.practicePlanAbandoned, 3);
+            } else if (chance(rng, 0.35)) {
               push(WEB_EVENTS.onboardingAbandoned, randInt(rng, 2, 10));
             }
-            if (chance(rng, 0.18)) {
+            // Fast users who still fail
+            if (chance(rng, 0.08)) {
+              push(WEB_EVENTS.practicePlanAbandoned, 1);
+            }
+            if (chance(rng, 0.16)) {
               push(WEB_EVENTS.upgradeViewed, randInt(rng, 20, 120));
-              if (chance(rng, 0.35)) push(WEB_EVENTS.subscriptionStarted, 4, { plan: "aurelia_plus" });
+              if (chance(rng, 0.32)) push(WEB_EVENTS.subscriptionStarted, 4, { plan: "aurelia_plus" });
             }
           }
         }
       }
     }
 
-    // Credible retention: ~22% day+1, ~12% day+7, plus older-cohort day+14 / day+30
-    if (chance(rng, 0.22)) {
-      addReturnSession(1, chance(rng, 0.7) ? WEB_EVENTS.landingViewed : pick(rng, [WEB_EVENTS.pricingViewed, WEB_EVENTS.upgradeViewed, WEB_EVENTS.landingViewed]));
+    // Retention returns use practice_completed (~24% D1, ~14% D7)
+    if (chance(rng, 0.24)) {
+      addReturnSession(1, WEB_EVENTS.practiceCompleted, { durationSec: randInt(rng, 60, 600) });
     }
-    if (chance(rng, 0.12)) {
-      addReturnSession(7, WEB_EVENTS.landingViewed);
+    if (chance(rng, 0.14)) {
+      addReturnSession(7, WEB_EVENTS.practiceCompleted, { durationSec: randInt(rng, 60, 600) });
     }
-    if (chance(rng, 0.08)) {
-      addReturnSession(14, WEB_EVENTS.landingViewed);
+    if (chance(rng, 0.09)) {
+      addReturnSession(14, WEB_EVENTS.practiceCompleted);
     }
-    if (chance(rng, 0.05)) {
-      addReturnSession(30, WEB_EVENTS.landingViewed);
+    if (chance(rng, 0.06)) {
+      addReturnSession(30, WEB_EVENTS.practiceCompleted);
     }
 
     const names = personEvents.map((e) => e.eventName);

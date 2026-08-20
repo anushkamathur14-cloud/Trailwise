@@ -15,6 +15,7 @@ export const WEB_EVENTS = {
   wearableConnectionError: "wearable_connection_error",
   practicePlanCreated: "practice_plan_created",
   practicePlanAbandoned: "practice_plan_abandoned",
+  practiceCompleted: "practice_completed",
   friendInvited: "friend_invited",
   upgradeViewed: "upgrade_viewed",
   subscriptionStarted: "subscription_started",
@@ -99,11 +100,12 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     name: "Aurelia Web",
     productName: "Aurelia",
     productTagline: "A calmer daily wellness practice — on the web",
-    productDescription: "Aurelia wellness — web site, practice plans, friend invites, and Aurelia+.",
+    productDescription: "Website engagement across onboarding, practice plans, friend invitations, and Aurelia+.",
     platform: "web",
     retentionEvent: {
-      name: "Any return visit after first seen",
-      description: "Any subsequent web session after the user’s firstSeen day counts toward retention.",
+      name: WEB_EVENTS.practiceCompleted,
+      description:
+        "Percentage of new users who complete a practice (`practice_completed`) on the next eligible calendar day.",
     },
     primaryGoal: {
       id: "activation",
@@ -165,8 +167,9 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     productDescription: "Aurelia wellness app — sessions, day-1 return, and Aurelia+ on iOS & Android.",
     platform: "mobile",
     retentionEvent: {
-      name: "returned_next_day or any later app open",
-      description: "Day-N retention counts users with activity N calendar days after firstSeen (UTC).",
+      name: MOBILE_EVENTS.appOpened,
+      description:
+        "Percentage of new users with a qualifying return-day `app_opened` (or returned_next_day) on the next eligible calendar day.",
     },
     primaryGoal: {
       id: "activation",

@@ -30,8 +30,8 @@ type SignalsResponse = {
       relativeLift: number | null;
       relativeLiftUnavailableReason: string | null;
       polarity: string;
-      confidence: string;
-      evidenceStrength: string;
+    confidence: string;
+    evidenceStrength: string;
       strongestSegment: string | null;
       belowSampleThreshold: boolean;
       ciWith: { low: number; high: number };
@@ -55,7 +55,7 @@ export default function SignalsPage() {
       if (sort === "negative") return a.stats.absoluteDifference - b.stats.absoluteDifference;
       if (sort === "population") return b.stats.usersWithSignal - a.stats.usersWithSignal;
       if (sort === "evidence") {
-        const rank = { strong: 3, moderate: 2, weak: 1 } as const;
+        const rank = { strong: 3, moderate: 2, exploratory: 1, weak: 1 } as const;
         return (rank[b.stats.evidenceStrength as keyof typeof rank] ?? 0) - (rank[a.stats.evidenceStrength as keyof typeof rank] ?? 0);
       }
       return Math.abs(b.stats.absoluteDifference) - Math.abs(a.stats.absoluteDifference);
@@ -158,25 +158,23 @@ export default function SignalsPage() {
                 </p>
 
                 <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-                  <Tooltip content="Relative lift is (with − without) / without. Shown only when the baseline rate is large enough.">
+                  <Tooltip content="Relative lift is (with − without) / without. Hidden when the baseline is too small, the sample is thin, or the lift exceeds a display ceiling.">
                     <span className="cursor-help">
-                      Relative lift:{" "}
                       {signal.stats.relativeLift === null
-                        ? "Relative lift unavailable"
-                        : `${signal.stats.relativeLift > 0 ? "+" : ""}${(signal.stats.relativeLift * 100).toFixed(0)}%`}
+                        ? signal.stats.relativeLiftUnavailableReason ?? "Relative lift unavailable"
+                        : `Relative lift: ${signal.stats.relativeLift > 0 ? "+" : ""}${(signal.stats.relativeLift * 100).toFixed(0)}%`}
                     </span>
                   </Tooltip>
-                  <Tooltip content="Based on sample size and whether confidence intervals separate.">
-                    <span className="cursor-help">Evidence: {signal.stats.evidenceStrength}</span>
+                  <Tooltip content="Evidence reflects sample size and whether confidence intervals separate. Correlation only — not causation.">
+                    <span className="cursor-help">
+                      Evidence:{" "}
+                      {signal.stats.evidenceStrength === "strong"
+                        ? "Strong"
+                        : signal.stats.evidenceStrength === "moderate"
+                          ? "Moderate"
+                          : "Exploratory"}
+                    </span>
                   </Tooltip>
-                  <span>
-                    Confidence:{" "}
-                    {signal.stats.confidence === "high"
-                      ? "High confidence"
-                      : signal.stats.confidence === "medium"
-                        ? "Medium confidence"
-                        : "Exploratory"}
-                  </span>
                   {signal.stats.strongestSegment && <span>Strongest segment: {signal.stats.strongestSegment}</span>}
                 </div>
 

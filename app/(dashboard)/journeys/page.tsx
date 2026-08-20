@@ -17,9 +17,10 @@ type Graph = {
   successfulPath: string[];
   failurePath: string[];
   explanation: string;
-  entered?: number;
-  completed?: number;
-  abandoned?: number;
+  entered: number;
+  completed: number;
+  abandoned: number;
+  windowDays?: number;
 };
 
 export default function JourneysPage() {
@@ -40,17 +41,13 @@ export default function JourneysPage() {
   }, [workspaceId, workspace.defaultJourney.start, workspace.defaultJourney.end]);
 
   const { data, loading, error } = useApi<Graph>(
-    `/api/analytics/journeys?start=${start}&end=${end}&maxSteps=${maxSteps}${device ? `&device=${device}` : ""}`,
+    `/api/analytics/journeys?start=${start}&end=${end}&maxSteps=${maxSteps}&windowDays=7${device ? `&device=${device}` : ""}`,
     `${start}-${end}-${maxSteps}-${workspaceId}-${device}`,
   );
 
-  const totals = useMemo(() => {
-    if (!data || data.nodes.length === 0) return null;
-    const startNodes = data.nodes.filter((n) => n.step === 0);
-    const entered = startNodes.reduce((sum, n) => sum + n.count, 0);
-    const endCount = data.nodes.filter((n) => n.eventName === end).reduce((sum, n) => sum + n.count, 0);
-    return { entered, completed: endCount, abandoned: Math.max(0, entered - endCount) };
-  }, [data, end]);
+  const totals = data
+    ? { entered: data.entered, completed: data.completed, abandoned: data.abandoned }
+    : null;
 
   return (
     <div>
@@ -120,6 +117,7 @@ export default function JourneysPage() {
           <span>
             Abandoned / incomplete: <strong>{formatNumber(totals.abandoned)}</strong>
           </span>
+          <span className="text-xs text-muted-foreground">7-day journey window · counts from raw events, not chart pruning</span>
           <span className="flex items-center gap-3 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <span className="size-2 rounded-full bg-indigo-600" /> Successful
@@ -149,7 +147,7 @@ export default function JourneysPage() {
               graph={data}
               workspaceId={workspaceId}
               onSelect={setSelected}
-              entered={totals?.entered ?? 0}
+              entered={totals?.entered ?? data.entered}
             />
           )}
         </CardContent>
@@ -163,7 +161,9 @@ export default function JourneysPage() {
             </CardHeader>
             <CardContent className="text-sm">
               {data.successfulPath.length
-                ? data.successfulPath.map((name) => labelForEvent(workspaceId, name)).join(" → ")
+                ? data.successfulPath
+                    .map((name) => (name === "__other_steps__" ? "Other steps" : labelForEvent(workspaceId, name)))
+                    .join(" → ")
                 : "—"}
             </CardContent>
           </Card>
@@ -217,7 +217,7 @@ function SankeyChart({
     const { nodes, links } = layout({
       nodes: graph.nodes.map((node) => ({
         ...node,
-        label: `${node.step + 1}. ${labelForEvent(workspaceId, node.eventName)}`,
+        label: `${node.step + 1}. ${node.eventName === "__other_steps__" ? "Other steps" : labelForEvent(workspaceId, node.eventName)}`,
       })),
       links: graph.links.map((link) => ({ source: link.source, target: link.target, value: link.value })),
     });

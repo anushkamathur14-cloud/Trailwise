@@ -4,7 +4,7 @@ import { buildJourneyGraph } from "@/lib/analytics/journeys";
 import { calculateRetention } from "@/lib/analytics/retention";
 import { calculateSignalLift } from "@/lib/signals/lift";
 import { signalsFor } from "@/lib/signals/definitions";
-import { getWorkspace, type WorkspaceId } from "@/lib/workspace";
+import { getWorkspace, MOBILE_EVENTS, WEB_EVENTS, type WorkspaceId } from "@/lib/workspace";
 import { parseJson } from "@/lib/utils";
 import type { DateRange, SegmentFilter } from "@/lib/types";
 
@@ -102,14 +102,58 @@ export async function overviewMetrics(
     channels.set(ch, (channels.get(ch) ?? 0) + 1);
   }
 
+  const workspace = getWorkspace(workspaceId);
+  const retentionEventName = workspace.retentionEvent.name;
+  const asOf = range.to;
+
   const retentionPeople = await db.person.findMany({
-    where: { workspaceId, ...("segment" in filters && filters.segment ? { segment: filters.segment } : {}) },
+    where: {
+      workspaceId,
+      firstSeenAt: { lte: range.to },
+      ...("segment" in filters && filters.segment ? { segment: filters.segment } : {}),
+      ...("device" in filters && filters.device
+        ? {
+            deviceType: {
+              in:
+                filters.device === "ios"
+                  ? ["ios", "iphone"]
+                  : filters.device === "android"
+                    ? ["android"]
+                    : [filters.device],
+            },
+          }
+        : {}),
+    },
     select: { id: true, firstSeenAt: true },
   });
-  const activity = eventRows.map((event) => ({ personId: event.personId, timestamp: event.timestamp }));
+
+  const retentionActivityWhere =
+    workspaceId === "web-demo"
+      ? { eventName: WEB_EVENTS.practiceCompleted }
+      : {
+          OR: [
+            { eventName: MOBILE_EVENTS.appOpened },
+            { eventName: MOBILE_EVENTS.returnedNextDay },
+          ],
+        };
+
+  const retentionActivity = await db.event.findMany({
+    where: {
+      workspaceId,
+      personId: { in: retentionPeople.map((p) => p.id) },
+      ...retentionActivityWhere,
+    },
+    select: { personId: true, timestamp: true },
+  });
+
   const retention = calculateRetention(
     retentionPeople.map((person) => ({ personId: person.id, firstSeenAt: person.firstSeenAt })),
-    activity,
+    retentionActivity,
+    {
+      asOf,
+      retentionEvent: retentionEventName,
+      definition: workspace.retentionEvent.description,
+    },
   );
 
   const changeCount = (now: number, before: number) => periodChange(now, before, "count");
@@ -121,11 +165,6 @@ export async function overviewMetrics(
   const actCh = changeRate(activationRate, prevActivation);
   const convCh = changeRate(conversionRate, prevConversion);
 
-  // Prior retention for D1 comparison
-  const prevActivity = await db.event.findMany({
-    where: { workspaceId, timestamp: { gte: prev.from, lte: prev.to } },
-    select: { personId: true, timestamp: true },
-  });
   const prevRetentionPeople = await db.person.findMany({
     where: {
       workspaceId,
@@ -134,11 +173,24 @@ export async function overviewMetrics(
     },
     select: { id: true, firstSeenAt: true },
   });
+  const prevRetentionActivity = await db.event.findMany({
+    where: {
+      workspaceId,
+      personId: { in: prevRetentionPeople.map((p) => p.id) },
+      ...retentionActivityWhere,
+    },
+    select: { personId: true, timestamp: true },
+  });
   const prevRetention = calculateRetention(
     prevRetentionPeople.map((person) => ({ personId: person.id, firstSeenAt: person.firstSeenAt })),
-    prevActivity,
+    prevRetentionActivity,
+    {
+      asOf: prev.to,
+      retentionEvent: retentionEventName,
+      definition: workspace.retentionEvent.description,
+    },
   );
-  const retCh = changeRate(retention.day1, prevRetention.day1);
+  const retCh = changeRate(retention.day1 ?? 0, prevRetention.day1 ?? 0);
 
   return {
     activeUsers: people.length,
@@ -162,8 +214,9 @@ export async function overviewMetrics(
     conversionRateChangeUnavailable: convCh.unavailableReason,
     conversionRatePrior: prevConversion,
     retentionRate: retention.day1,
-    retentionRateChange: retCh.value,
-    retentionRateChangeUnavailable: retCh.unavailableReason,
+    retentionRateChange: retention.day1 == null || prevRetention.day1 == null ? null : retCh.value,
+    retentionRateChangeUnavailable:
+      retention.day1 == null || prevRetention.day1 == null ? "No prior-period data" : retCh.unavailableReason,
     retentionRatePrior: prevRetention.day1,
     eventsOverTime: [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -171,9 +224,9 @@ export async function overviewMetrics(
     channels: [...channels.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
     features: [...features.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 8),
     retention,
-    primaryGoalDescription: getWorkspace(workspaceId).primaryGoal.description,
-    secondaryGoalDescription: getWorkspace(workspaceId).secondaryGoal.description,
-    retentionEventDescription: getWorkspace(workspaceId).retentionEvent.description,
+    primaryGoalDescription: workspace.primaryGoal.description,
+    secondaryGoalDescription: workspace.secondaryGoal.description,
+    retentionEventDescription: workspace.retentionEvent.description,
   };
 }
 
@@ -215,21 +268,37 @@ export async function journeyQuery(
   end: string | undefined,
   maxSteps: number,
   filters: SegmentFilter,
+  windowDays = 7,
 ) {
   const people = await db.person.findMany({
     where: personWhere(workspaceId, range, filters),
     select: { id: true },
   });
+  const personIds = people.map((p) => p.id);
+  const aliases = await db.personAlias.findMany({
+    where: { personId: { in: personIds } },
+    select: { personId: true, previousId: true },
+  });
+  const identityMap = new Map<string, string>();
+  for (const alias of aliases) {
+    identityMap.set(alias.previousId, alias.personId);
+  }
+
+  // Include events for people in range and any aliased prior ids that still have rows
+  const priorIds = aliases.map((a) => a.previousId);
   const events = await db.event.findMany({
     where: {
       workspaceId,
-      personId: { in: people.map((p) => p.id) },
+      OR: [
+        { personId: { in: personIds } },
+        ...(priorIds.length ? [{ personId: { in: priorIds } }] : []),
+      ],
       timestamp: { gte: range.from, lte: range.to },
     },
     select: { personId: true, eventName: true, timestamp: true },
     orderBy: { timestamp: "asc" },
   });
-  return buildJourneyGraph(events, { start, end, maxSteps });
+  return buildJourneyGraph(events, { start, end, maxSteps, windowDays, identityMap });
 }
 
 export async function signalQuery(

@@ -22,6 +22,7 @@ export const WEB_EVENT_DEFINITIONS: EventDefinition[] = [
   { name: WEB_EVENTS.wearableConnectionError, label: "Wearable connection error", category: "failure", description: "A wearable connection failed.", properties: ["provider", "error_code"] },
   { name: WEB_EVENTS.practicePlanCreated, label: "Practice plan created", category: "activation", description: "User created their first practice plan.", properties: ["template"], skanConversionValue: 16 },
   { name: WEB_EVENTS.practicePlanAbandoned, label: "Practice plan abandoned", category: "failure", description: "Plan creation was started but not finished.", properties: [] },
+  { name: WEB_EVENTS.practiceCompleted, label: "Practice completed", category: "engagement", description: "User finished a practice session — web retention event.", properties: ["durationSec"] },
   { name: WEB_EVENTS.friendInvited, label: "Friend invited", category: "activation", description: "User invited a friend — completes activation with a practice plan.", properties: ["role"], skanConversionValue: 32 },
   { name: WEB_EVENTS.upgradeViewed, label: "Aurelia+ viewed", category: "monetization", description: "User opened the paid plan page.", properties: ["plan"] },
   { name: WEB_EVENTS.subscriptionStarted, label: "Subscription started", category: "monetization", description: "User started Aurelia+ on the web.", properties: ["plan", "mrr"], skanConversionValue: 63 },

@@ -75,7 +75,7 @@ describe("signal lift", () => {
     ];
     const result = calculateSignalLift(rows, MIN_SAMPLE);
     expect(result.belowSampleThreshold).toBe(true);
-    expect(result.confidence).toBe("low");
+    expect(result.evidenceStrength).toBe("exploratory");
   });
 
   it("returns null relativeLift when baseline conversion is zero", () => {
@@ -85,7 +85,7 @@ describe("signal lift", () => {
     ];
     const result = calculateSignalLift(rows);
     expect(result.relativeLift).toBeNull();
-    expect(result.relativeLiftUnavailableReason).toMatch(/baseline/i);
+    expect(result.relativeLiftUnavailableReason).toMatch(/not stable/i);
     expect(result.absoluteDifference).toBeGreaterThan(0);
   });
 });

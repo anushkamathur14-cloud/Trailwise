@@ -13,10 +13,20 @@ export async function GET(request: Request) {
     const start = url.searchParams.get("start") ?? workspace.defaultJourney.start;
     const end = url.searchParams.get("end") ?? workspace.defaultJourney.end;
     const maxSteps = Math.min(Number(url.searchParams.get("maxSteps") ?? 7), 8);
-    return journeyQuery(prisma, workspaceId, range, start, end, maxSteps, {
-      channel: range.channel,
-      device: range.device,
-      segment: range.segment,
-    });
+    const windowDays = Math.min(Number(url.searchParams.get("windowDays") ?? 7), 30);
+    return journeyQuery(
+      prisma,
+      workspaceId,
+      range,
+      start,
+      end,
+      maxSteps,
+      {
+        channel: range.channel,
+        device: range.device,
+        segment: range.segment,
+      },
+      windowDays,
+    );
   });
 }

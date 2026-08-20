@@ -146,23 +146,47 @@ export function ForgePreview({
       >
         {heatmapEnabled && <HeatmapOverlay enabled={heatmapEnabled} points={displayHeat} />}
 
-        <nav className={`relative z-10 flex items-center justify-between border-b border-[#e0d6c6] bg-[#faf7f1]/px-4 ${compact ? "px-4 py-3" : "px-8 py-4"}`}>
+        <nav className={`relative z-10 flex items-center justify-between gap-3 border-b border-[#e0d6c6] bg-[#faf7f1] ${compact ? "px-4 py-3" : "px-8 py-4"}`}>
           <button
-            className="font-serif text-xl text-[#2c2822]"
+            className="shrink-0 font-serif text-xl text-[#2c2822]"
             onClick={() => setScreen("landing")}
           >
             Aurelia
           </button>
-          {!compact && (
-            <div className="flex gap-6 text-sm text-[#6b6358]">
-              <button onClick={() => { setScreen("pricing"); void track(WEB_EVENTS.pricingViewed); }}>Pricing</button>
-              <button onClick={() => setScreen("onboarding")}>Practice</button>
-              <button onClick={() => setScreen("upgrade")}>Aurelia+</button>
+          {compact ? (
+            <div className="flex items-center gap-2">
+              <details className="relative">
+                <summary className="cursor-pointer list-none rounded-md border border-[#e0d6c6] px-2 py-1 text-sm text-[#6b6358]">
+                  Menu
+                </summary>
+                <div className="absolute right-0 z-20 mt-1 w-40 rounded-md border border-[#e0d6c6] bg-white p-2 text-sm shadow-md">
+                  <button className="block w-full px-2 py-1.5 text-left" onClick={() => { setScreen("pricing"); void track(WEB_EVENTS.pricingViewed); }}>
+                    Pricing
+                  </button>
+                  <button className="block w-full px-2 py-1.5 text-left" onClick={() => setScreen("onboarding")}>
+                    Practice
+                  </button>
+                  <button className="block w-full px-2 py-1.5 text-left" onClick={() => setScreen("upgrade")}>
+                    Aurelia+
+                  </button>
+                </div>
+              </details>
+              <Button size="sm" variant="outline" onClick={() => { void track(WEB_EVENTS.signupStarted); setScreen("signup"); }}>
+                Sign in
+              </Button>
             </div>
+          ) : (
+            <>
+              <div className="flex gap-6 text-sm text-[#6b6358]">
+                <button onClick={() => { setScreen("pricing"); void track(WEB_EVENTS.pricingViewed); }}>Pricing</button>
+                <button onClick={() => setScreen("onboarding")}>Practice</button>
+                <button onClick={() => setScreen("upgrade")}>Aurelia+</button>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => { void track(WEB_EVENTS.signupStarted); setScreen("signup"); }}>
+                Sign in
+              </Button>
+            </>
           )}
-          <Button size="sm" variant="outline" onClick={() => { void track(WEB_EVENTS.signupStarted); setScreen("signup"); }}>
-            Sign in
-          </Button>
         </nav>
 
         <div className={`relative z-10 ${compact ? "p-4" : "p-8"}`}>

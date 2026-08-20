@@ -48,7 +48,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         kind: "product",
         title: "Move wearable assistance earlier",
         change: "Prompt new Aurelia web users to connect a wearable before they reach an empty practice plan.",
-        evidence: "Users who connect a wearable in the first session activate more often than those who skip it. Connection errors also cluster with onboarding abandonment.",
+        evidence: "About 31% of users who connect a wearable early activate, versus 17% who do not.",
         segment: "New sign-ups, first session",
         impactDirection: "increase",
         confidence: "high",
@@ -57,7 +57,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         experiment: "Holdout 20% of new accounts on the current onboarding. Primary: activation. Guardrail: sign-up completion.",
         previewId: "earlier-wearable-help",
         impact: "First-session users stall on empty practice plans before connecting a wearable — a major activation leak.",
-        expectedImpact: "+8–14% activation among new sign-ups (high confidence)",
+        expectedImpact: "+8–14% activation",
       },
       {
         id: "web-friend-invite",
@@ -73,7 +73,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         experiment: "Show invite modal vs settings-only. Guardrail: plan creation rate.",
         previewId: "friend-invite-prompt",
         impact: "High-intent users create a practice plan then leave without inviting — activation never closes.",
-        expectedImpact: "+10–18% invite rate within 24h for plan creators (medium confidence)",
+        expectedImpact: "+10–18% invite rate within 24h",
       },
       {
         id: "web-error-recovery",
@@ -89,7 +89,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         experiment: "Error-recovery screen vs current dead-end. Guardrail: support tickets.",
         previewId: "error-recovery",
         impact: "Wearable errors dump users into a dead end and spike onboarding abandonment.",
-        expectedImpact: "+20–30% onboarding completion after error (high confidence)",
+        expectedImpact: "+20–30% onboarding completion after error",
       },
     ];
   }
@@ -109,7 +109,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       experiment: "Paywall after first session vs current first-session paywall. Guardrail: day-1 retention.",
       previewId: "delayed-paywall",
       impact: "Early paywall interrupts first value and suppresses both trial starts and day-1 return.",
-      expectedImpact: "+12–20% trial starts; day-1 retention guardrail flat-to-up (high confidence)",
+      expectedImpact: "+12–20% trial starts",
     },
     {
       id: "mobile-core-nudge",
@@ -125,7 +125,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       experiment: "Immediate session vs current multi-step onboarding. Guardrail: permission grant rate.",
       previewId: "first-session-nudge",
       impact: "New installs browse goals but never complete a session in the first five minutes.",
-      expectedImpact: "+15–25% session completion in 5 minutes (high confidence)",
+      expectedImpact: "+15–25% session completion in 5 minutes",
     },
     {
       id: "mobile-permission-alt",
@@ -141,7 +141,7 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       experiment: "Fallback reminder vs no fallback. Guardrail: uninstall proxy (session volume).",
       previewId: "permission-fallback",
       impact: "Permission denials lose the reminder loop with no recovery path.",
-      expectedImpact: "+6–12% day-1 return among denials (medium confidence)",
+      expectedImpact: "+6–12% day-1 return among denials",
     },
   ];
 }

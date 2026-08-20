@@ -1,18 +1,24 @@
-export type RetentionEvent = {
-  personId: string;
-  timestamp: Date;
-  isNew: boolean;
+export type RetentionDayCell = {
+  day: number;
+  retained: number;
+  /** null when the cohort has not matured into this window */
+  rate: number | null;
+  matured: boolean;
 };
 
 export type RetentionHeatmap = {
   cohorts: Array<{
     cohort: string;
     size: number;
-    days: Array<{ day: number; retained: number; rate: number }>;
+    days: RetentionDayCell[];
   }>;
-  day1: number;
-  day7: number;
-  day30: number;
+  /** Aggregate rates among matured cohorts only */
+  day1: number | null;
+  day7: number | null;
+  day30: number | null;
+  asOf: string;
+  retentionEvent: string;
+  definition: string;
 };
 
 function startOfUtcDay(date: Date): Date {
@@ -23,11 +29,22 @@ function dayDiff(a: Date, b: Date): number {
   return Math.round((startOfUtcDay(b).getTime() - startOfUtcDay(a).getTime()) / 86_400_000);
 }
 
+/**
+ * Retention = share of new users who perform the retention event on day N
+ * (calendar day offset from firstSeen, UTC). Unmatured windows are null.
+ */
 export function calculateRetention(
   firstSeen: Array<{ personId: string; firstSeenAt: Date }>,
   activity: Array<{ personId: string; timestamp: Date }>,
-  windows = [1, 7, 14, 30],
+  options: {
+    windows?: number[];
+    asOf?: Date;
+    retentionEvent?: string;
+    definition?: string;
+  } = {},
 ): RetentionHeatmap {
+  const windows = options.windows ?? [1, 7, 14, 30];
+  const asOf = startOfUtcDay(options.asOf ?? new Date());
   const firstByPerson = new Map(firstSeen.map((row) => [row.personId, startOfUtcDay(row.firstSeenAt)]));
   const activityByPerson = new Map<string, Set<number>>();
   for (const row of activity) {
@@ -52,17 +69,29 @@ export function calculateRetention(
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([cohort, people]) => {
       const size = people.length;
+      const cohortDay = startOfUtcDay(new Date(`${cohort}T00:00:00.000Z`));
       const days = windows.map((day) => {
+        const matured = dayDiff(cohortDay, asOf) >= day;
+        if (!matured) {
+          return { day, retained: 0, rate: null as number | null, matured: false };
+        }
         const retained = people.filter((id) => activityByPerson.get(id)?.has(day)).length;
-        return { day, retained, rate: size === 0 ? 0 : retained / size };
+        return { day, retained, rate: size === 0 ? 0 : retained / size, matured: true };
       });
       return { cohort, size, days };
     });
 
-  const allPeople = firstSeen.map((row) => row.personId);
-  const rateFor = (day: number) => {
-    if (allPeople.length === 0) return 0;
-    return allPeople.filter((id) => activityByPerson.get(id)?.has(day)).length / allPeople.length;
+  const rateFor = (day: number): number | null => {
+    let eligible = 0;
+    let retained = 0;
+    for (const row of firstSeen) {
+      const first = startOfUtcDay(row.firstSeenAt);
+      if (dayDiff(first, asOf) < day) continue;
+      eligible += 1;
+      if (activityByPerson.get(row.personId)?.has(day)) retained += 1;
+    }
+    if (eligible === 0) return null;
+    return retained / eligible;
   };
 
   return {
@@ -70,6 +99,11 @@ export function calculateRetention(
     day1: rateFor(1),
     day7: rateFor(7),
     day30: rateFor(30),
+    asOf: asOf.toISOString().slice(0, 10),
+    retentionEvent: options.retentionEvent ?? "activity",
+    definition:
+      options.definition ??
+      "Percentage of new users who perform the workspace retention event on the next eligible calendar day.",
   };
 }
 

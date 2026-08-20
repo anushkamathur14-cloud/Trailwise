@@ -25,6 +25,7 @@ describe("web event vocabulary", () => {
     "wearable_connection_error",
     "practice_plan_created",
     "practice_plan_abandoned",
+    "practice_completed",
     "friend_invited",
     "upgrade_viewed",
     "subscription_started",
@@ -110,7 +111,7 @@ describe("relative lift and period change", () => {
     ];
     const result = calculateSignalLift(rows);
     expect(result.relativeLift).toBeNull();
-    expect(result.relativeLiftUnavailableReason).toMatch(/unavailable|baseline/i);
+    expect(result.relativeLiftUnavailableReason).toMatch(/not stable|unavailable|baseline/i);
     expect(result.absoluteDifference).toBeCloseTo(0.5);
   });
 

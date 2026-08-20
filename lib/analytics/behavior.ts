@@ -201,7 +201,7 @@ function computeStepStats(
   }
 
   const nextCounts = new Map<string, number>();
-  const abandonCounts = new Map<string, number>();
+  const dropOffCounts = new Map<string, number>();
   const deltas: number[] = [];
   let progressed = 0;
 
@@ -222,7 +222,8 @@ function computeStepStats(
     const current = timeline[idx];
     const next = timeline[idx + 1];
     if (!next) {
-      abandonCounts.set(current.eventName, (abandonCounts.get(current.eventName) ?? 0) + 1);
+      // Drop-off: last meaningful event was current; expected next never happened
+      dropOffCounts.set(current.eventName, (dropOffCounts.get(current.eventName) ?? 0) + 1);
       continue;
     }
     progressed += 1;
@@ -234,19 +235,23 @@ function computeStepStats(
       next.eventName.includes("denied") ||
       next.eventName.includes("dismissed")
     ) {
-      abandonCounts.set(next.eventName, (abandonCounts.get(next.eventName) ?? 0) + 1);
+      dropOffCounts.set(next.eventName, (dropOffCounts.get(next.eventName) ?? 0) + 1);
     }
   }
 
   const mostCommonNext = [...nextCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-  const mostCommonAbandon = [...abandonCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+  const mostCommonDropOffEvent = [...dropOffCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
   const reached = usersReached.size;
+  const dropOffRate = reached === 0 ? 0 : (reached - progressed) / reached;
 
   return {
     usersReachedStep: reached,
     stepCompletionRate: reached === 0 ? 0 : progressed / reached,
+    dropOffRate,
     mostCommonNextEvent: mostCommonNext,
-    mostCommonAbandonEvent: mostCommonAbandon,
+    mostCommonDropOffEvent,
+    /** @deprecated use mostCommonDropOffEvent */
+    mostCommonAbandonEvent: mostCommonDropOffEvent,
     medianTimeToNextMs: median(deltas),
   };
 }

@@ -49,10 +49,10 @@ type Overview = {
   conversionRateChange: number | null;
   conversionRateChangeUnavailable?: string | null;
   conversionRatePrior?: number;
-  retentionRate: number;
+  retentionRate: number | null;
   retentionRateChange: number | null;
   retentionRateChangeUnavailable?: string | null;
-  retentionRatePrior?: number;
+  retentionRatePrior?: number | null;
   eventsOverTime: Array<{ date: string; count: number }>;
   channels: Array<{ name: string; count: number }>;
   features: Array<{ name: string; count: number }>;
@@ -218,30 +218,37 @@ export default function OverviewPage() {
 
       {hero && (
         <Card className="mb-6 border-primary/25 bg-gradient-to-br from-primary/5 via-background to-background">
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Trailwise insight</CardTitle>
-              <Badge>
-                {hero.confidence === "high" ? "High confidence" : hero.confidence === "medium" ? "Medium confidence" : "Exploratory"}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-[1.4fr_auto]">
+          <CardContent className="grid gap-4 p-5 lg:grid-cols-[1.35fr_0.9fr]">
             <div className="space-y-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">
+                  {hero.impactDirection === "increase" ? "Priority: High" : "Priority: Medium"}
+                </Badge>
+                <Badge>
+                  {hero.confidence === "high" ? "High confidence" : hero.confidence === "medium" ? "Medium confidence" : "Exploratory"}
+                </Badge>
+              </div>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Problem</div>
-              <p className="font-medium">{hero.impact}</p>
+              <p className="font-medium leading-snug">{hero.impact}</p>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Evidence</div>
               <p>{hero.evidence}</p>
               <div className="text-xs uppercase tracking-wide text-muted-foreground">Recommended action</div>
               <p>{hero.change}</p>
-              <div className="text-xs uppercase tracking-wide text-muted-foreground">Expected impact (estimate)</div>
-              <p className="text-emerald-800">{hero.expectedImpact}</p>
             </div>
-            <div className="flex flex-col justify-end gap-2">
+            <div className="flex flex-col justify-between gap-3 rounded-lg border bg-background/80 p-4 text-sm">
+              <div className="space-y-2">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Estimated impact</div>
+                  <p className="mt-1 font-medium text-emerald-800">{hero.expectedImpact}</p>
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Target segment</div>
+                  <p className="mt-1">{hero.segment}</p>
+                </div>
+              </div>
               <Button asChild>
                 <Link href={`/studio?preview=${hero.previewId}`}>Preview change</Link>
               </Button>
-              <p className="text-xs text-muted-foreground">Segment: {hero.segment}</p>
             </div>
           </CardContent>
         </Card>
@@ -295,10 +302,10 @@ export default function OverviewPage() {
         />
         <Kpi
           label="Day-1 retention"
-          value={formatPercent(data.retentionRate)}
+          value={data.retentionRate == null ? "—" : formatPercent(data.retentionRate)}
           change={data.retentionRateChange}
           unavailable={data.retentionRateChangeUnavailable}
-          prior={data.retentionRatePrior}
+          prior={data.retentionRatePrior ?? undefined}
           kind="rate"
           hint={data.retentionEventDescription ?? workspace.retentionEvent.description}
         />
@@ -307,7 +314,7 @@ export default function OverviewPage() {
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle>All events over time</CardTitle>
+            <CardTitle>Event activity</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="mb-3 flex flex-wrap gap-2">
@@ -317,7 +324,7 @@ export default function OverviewPage() {
                   onClick={() => toggleCompare(name)}
                   className={`rounded-full border px-2.5 py-1 text-xs ${compareEvents.includes(name) ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground"}`}
                 >
-                  {name.replace(/_/g, " ")}
+                  {name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                 </button>
               ))}
             </div>
