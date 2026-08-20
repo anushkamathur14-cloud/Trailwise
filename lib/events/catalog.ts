@@ -10,20 +10,20 @@ export type EventDefinition = {
 };
 
 export const WEB_EVENT_DEFINITIONS: EventDefinition[] = [
-  { name: WEB_EVENTS.landingViewed, label: "Landing viewed", category: "acquisition", description: "Visitor landed on the Forge marketing site.", properties: ["channel", "page"] },
-  { name: WEB_EVENTS.pricingViewed, label: "Pricing viewed", category: "acquisition", description: "Visitor opened the pricing page.", properties: ["plan_interest"] },
+  { name: WEB_EVENTS.landingViewed, label: "Landing viewed", category: "acquisition", description: "Visitor landed on the Aurelia marketing site.", properties: ["channel", "page"] },
+  { name: WEB_EVENTS.pricingViewed, label: "Pricing viewed", category: "acquisition", description: "Visitor opened Aurelia+ pricing.", properties: ["plan_interest"] },
   { name: WEB_EVENTS.signupStarted, label: "Sign-up started", category: "acquisition", description: "Visitor began creating an account.", properties: ["method"], skanConversionValue: 1 },
   { name: WEB_EVENTS.signupAbandoned, label: "Sign-up abandoned", category: "failure", description: "Sign-up form left incomplete.", properties: ["last_field"] },
-  { name: WEB_EVENTS.accountCreated, label: "Account created", category: "activation", description: "A Forge account was successfully created.", properties: ["plan"], skanConversionValue: 3 },
-  { name: WEB_EVENTS.onboardingStarted, label: "Onboarding started", category: "activation", description: "User entered the guided setup flow.", properties: [] },
+  { name: WEB_EVENTS.accountCreated, label: "Account created", category: "activation", description: "An Aurelia web account was created.", properties: ["plan"], skanConversionValue: 3 },
+  { name: WEB_EVENTS.onboardingStarted, label: "Onboarding started", category: "activation", description: "User entered guided practice setup.", properties: [] },
   { name: WEB_EVENTS.onboardingAbandoned, label: "Onboarding abandoned", category: "failure", description: "User left onboarding before completing setup.", properties: ["last_step"] },
-  { name: WEB_EVENTS.integrationConnected, label: "Integration connected", category: "activation", description: "User connected Slack, GitHub, or HubSpot.", properties: ["provider"], skanConversionValue: 8 },
-  { name: WEB_EVENTS.integrationError, label: "Integration error", category: "failure", description: "An integration connection failed.", properties: ["provider", "error_code"] },
-  { name: WEB_EVENTS.projectCreated, label: "Project created", category: "activation", description: "User created their first project.", properties: ["template"], skanConversionValue: 16 },
-  { name: WEB_EVENTS.projectAbandoned, label: "Project abandoned", category: "failure", description: "Project creation was started but not finished.", properties: [] },
-  { name: WEB_EVENTS.teammateInvited, label: "Teammate invited", category: "activation", description: "User invited a collaborator — primary activation.", properties: ["role"], skanConversionValue: 32 },
-  { name: WEB_EVENTS.upgradeViewed, label: "Upgrade viewed", category: "monetization", description: "User opened the paid plan page.", properties: ["plan"] },
-  { name: WEB_EVENTS.subscriptionStarted, label: "Subscription started", category: "monetization", description: "User started a paid Forge subscription.", properties: ["plan", "mrr"], skanConversionValue: 63 },
+  { name: WEB_EVENTS.integrationConnected, label: "Wearable connected", category: "activation", description: "User connected Apple Watch, Oura, or Google Fit.", properties: ["provider"], skanConversionValue: 8 },
+  { name: WEB_EVENTS.integrationError, label: "Wearable error", category: "failure", description: "A wearable connection failed.", properties: ["provider", "error_code"] },
+  { name: WEB_EVENTS.projectCreated, label: "Practice plan created", category: "activation", description: "User created their first practice plan.", properties: ["template"], skanConversionValue: 16 },
+  { name: WEB_EVENTS.projectAbandoned, label: "Practice plan abandoned", category: "failure", description: "Plan creation was started but not finished.", properties: [] },
+  { name: WEB_EVENTS.teammateInvited, label: "Friend invited", category: "activation", description: "User invited a friend — primary activation.", properties: ["role"], skanConversionValue: 32 },
+  { name: WEB_EVENTS.upgradeViewed, label: "Aurelia+ viewed", category: "monetization", description: "User opened the paid plan page.", properties: ["plan"] },
+  { name: WEB_EVENTS.subscriptionStarted, label: "Subscription started", category: "monetization", description: "User started Aurelia+ on the web.", properties: ["plan", "mrr"], skanConversionValue: 63 },
   { name: WEB_EVENTS.identityMerged, label: "Identity merged", category: "system", description: "Anonymous visitor linked to a known user.", properties: ["fromAnonymousId"] },
 ];
 
@@ -63,7 +63,7 @@ export const SKAN_POLICY = {
     "Values are coarse: many users share the same bucket.",
     "Postbacks are delayed and may be null when traffic is sparse.",
     "Do not treat SKAN CV as a substitute for first-party event analytics.",
-    "Web Forge uses analogous conversion values for demo parity; SKAN applies to iOS installs.",
+    "Web Aurelia uses analogous conversion values for demo parity; SKAN applies to iOS installs.",
   ],
 };
 

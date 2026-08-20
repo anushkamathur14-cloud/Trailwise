@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,13 +25,21 @@ type Recs = {
     successMetric: string;
     experiment: string;
     previewId: string;
+    hotspotScreens?: string[];
+    relatedEvents?: string[];
+    heatmapHint?: string;
   }>;
-};
-
-export default function RecommendationsPage() {
-  const { data, loading, error } = useApi<Recs>("/api/recommendations");
-  const [personId, setPersonId] = useState("");
-  const [userRec, setUserRec] = useState<{
+  fromHeatmap?: {
+    title: string;
+    action: string;
+    why: string;
+    confidence: string;
+    previewId: string;
+    triggerEvents: string[];
+    hotspotScreens: string[];
+    nextEvents: string[];
+  } | null;
+  user?: {
     title: string;
     why: string;
     experience: string;
@@ -38,13 +47,39 @@ export default function RecommendationsPage() {
     signals: string[];
     suppression: string[];
     confidence: string;
-  } | null>(null);
+  } | null;
+};
+
+export default function RecommendationsPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading recommendations…</p>}>
+      <RecommendationsInner />
+    </Suspense>
+  );
+}
+
+function RecommendationsInner() {
+  const params = useSearchParams();
+  const initialPerson = params.get("personId") ?? "";
+  const [personId, setPersonId] = useState(initialPerson);
+  const { data, loading, error } = useApi<Recs>(
+    `/api/recommendations${personId ? `?personId=${personId}` : ""}`,
+    personId || "all",
+  );
+  const [userRec, setUserRec] = useState<Recs["user"]>(null);
+  const [heatRec, setHeatRec] = useState<Recs["fromHeatmap"]>(null);
   const [enhanced, setEnhanced] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (data?.user) setUserRec(data.user);
+    if (data?.fromHeatmap !== undefined) setHeatRec(data.fromHeatmap);
+  }, [data]);
 
   async function loadUser() {
     const response = await fetch(`/api/recommendations?personId=${personId}`);
     const json = await response.json();
     setUserRec(json.user);
+    setHeatRec(json.fromHeatmap);
   }
 
   async function enhance(id: string, title: string, evidence: string, experiment: string) {
@@ -64,8 +99,44 @@ export default function RecommendationsPage() {
     <div>
       <PageHeader
         title="Recommendations"
-        description="Evidence-linked product changes and next-best actions. Preview opens Experience Studio with the matching journey variant."
+        description="Product changes linked to events and heatmap hotspots. Preview opens Tester Mode on the matching journey."
       />
+
+      {heatRec && (
+        <Card className="mb-6 border-emerald-200 bg-emerald-50/40">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>From heatmap + events</CardTitle>
+              <Badge>{heatRec.confidence}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="font-medium">{heatRec.title}</div>
+            <p>{heatRec.why}</p>
+            <p className="font-medium">{heatRec.action}</p>
+            <div className="grid gap-2 sm:grid-cols-3 text-xs">
+              <div>
+                <div className="text-muted-foreground">Hotspot screens</div>
+                <div>{heatRec.hotspotScreens.join(", ") || "—"}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Trigger events</div>
+                <div>{heatRec.triggerEvents.map((e) => e.replace(/_/g, " ")).join(", ") || "—"}</div>
+              </div>
+              <div>
+                <div className="text-muted-foreground">Next events</div>
+                <div>{heatRec.nextEvents.map((e) => e.replace(/_/g, " ")).join(" → ")}</div>
+              </div>
+            </div>
+            <Button asChild>
+              <Link href={`/studio?${personId ? `personId=${personId}&` : ""}preview=${heatRec.previewId}`}>
+                Preview recommended experience
+              </Link>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-4 md:grid-cols-2">
         {data.product.map((rec) => (
           <Card key={rec.id} className="flex flex-col">
@@ -89,29 +160,35 @@ export default function RecommendationsPage() {
                 <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence</div>
                 <p className="mt-1">{rec.evidence}</p>
               </div>
+              {rec.heatmapHint && (
+                <div className="rounded-md border border-rose-200/70 bg-rose-50/50 p-3 text-xs">
+                  <div className="font-medium uppercase tracking-wide text-rose-800">Heatmap link</div>
+                  <p className="mt-1 text-rose-950/80">{rec.heatmapHint}</p>
+                  {rec.hotspotScreens && rec.hotspotScreens.length > 0 && (
+                    <p className="mt-1 text-muted-foreground">Screens: {rec.hotspotScreens.join(", ")}</p>
+                  )}
+                  {rec.relatedEvents && rec.relatedEvents.length > 0 && (
+                    <p className="text-muted-foreground">
+                      Drive events: {rec.relatedEvents.map((e) => e.replace(/_/g, " ")).join(" → ")}
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div>
                   <div className="text-muted-foreground">Segment</div>
                   <div>{rec.segment}</div>
                 </div>
                 <div>
-                  <div className="text-muted-foreground">Impact</div>
-                  <div>{rec.impactDirection}</div>
-                </div>
-                <div>
                   <div className="text-muted-foreground">Success metric</div>
                   <div>{rec.successMetric}</div>
-                </div>
-                <div>
-                  <div className="text-muted-foreground">Downside</div>
-                  <div>{rec.downside}</div>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Experiment: {rec.experiment}</p>
               {enhanced[rec.id] && <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">{enhanced[rec.id]}</p>}
               <div className="flex flex-wrap gap-2 pt-1">
                 <Button asChild>
-                  <Link href={`/studio?preview=${rec.previewId}`}>Preview in Experience Studio</Link>
+                  <Link href={`/studio?preview=${rec.previewId}`}>Preview in Tester Mode</Link>
                 </Button>
                 <Button variant="outline" onClick={() => enhance(rec.id, rec.title, rec.evidence, rec.experiment)}>
                   Enhance copy
@@ -127,7 +204,7 @@ export default function RecommendationsPage() {
         </CardHeader>
         <CardContent>
           <div className="flex max-w-xl gap-2">
-            <Input placeholder="Person id from Users" value={personId} onChange={(e) => setPersonId(e.target.value)} />
+            <Input placeholder="Person id from Users / Tester" value={personId} onChange={(e) => setPersonId(e.target.value)} />
             <Button onClick={loadUser}>Analyze user</Button>
           </div>
           {userRec && (
@@ -138,7 +215,7 @@ export default function RecommendationsPage() {
               <p className="text-xs text-muted-foreground">Signals: {userRec.signals.join(", ")}</p>
               <Button asChild className="mt-2">
                 <Link href={`/studio?personId=${personId}&preview=${userRec.previewId}`}>
-                  Preview in Experience Studio
+                  Preview in Tester Mode
                 </Link>
               </Button>
             </div>

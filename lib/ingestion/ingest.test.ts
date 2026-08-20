@@ -18,7 +18,7 @@ async function reset() {
   await prisma.settings.deleteMany();
   await prisma.workspace.deleteMany();
   await prisma.workspace.create({
-    data: { id: "web-demo", name: "Web Demo", platform: "web", productName: "Forge" },
+    data: { id: "web-demo", name: "Aurelia Web", platform: "web", productName: "Aurelia" },
   });
   await prisma.settings.create({
     data: { id: "web-settings", workspaceId: "web-demo", collectionEnabled: true },

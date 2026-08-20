@@ -20,11 +20,19 @@ export function previousRange(range: DateRange): DateRange {
 }
 
 function personWhere(workspaceId: string, range: DateRange, filters: SegmentFilter): Prisma.PersonWhereInput {
+  const devices =
+    filters.device === "ios"
+      ? ["ios", "iphone", "mobile-web"]
+      : filters.device === "android"
+        ? ["android"]
+        : filters.device
+          ? [filters.device]
+          : undefined;
   return {
     workspaceId,
     lastSeenAt: { gte: range.from, lte: range.to },
     ...(filters.channel ? { acquisitionChannel: filters.channel } : {}),
-    ...(filters.device ? { deviceType: filters.device } : {}),
+    ...(devices ? { deviceType: { in: devices } } : {}),
     ...(filters.segment ? { segment: filters.segment } : {}),
     ...(filters.country ? { country: filters.country } : {}),
   };

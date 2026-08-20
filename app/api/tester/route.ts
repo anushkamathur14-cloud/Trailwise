@@ -11,6 +11,7 @@ export async function POST(request: Request) {
     const body = (await request.json().catch(() => ({}))) as {
       action?: string;
       personId?: string;
+      ecosystem?: string;
     };
     const now = new Date();
 
@@ -24,6 +25,11 @@ export async function POST(request: Request) {
       return json({ ok: true });
     }
 
+    const ecosystem = body.ecosystem === "android" ? "android" : body.ecosystem === "ios" ? "ios" : null;
+    const deviceType =
+      ecosystem ??
+      (workspace.platform === "web" ? "desktop" : "ios");
+
     const anonymousId = `tester_${nanoid(8)}`;
     const person = await prisma.person.create({
       data: {
@@ -36,10 +42,10 @@ export async function POST(request: Request) {
         isTester: true,
         segment: "tester",
         acquisitionChannel: "tester-mode",
-        deviceType: workspace.platform === "web" ? "desktop" : "iphone",
+        deviceType,
         country: "US",
         consentState: "granted",
-        propertiesJson: JSON.stringify({ tester: true }),
+        propertiesJson: JSON.stringify({ tester: true, ecosystem: ecosystem ?? "all" }),
       },
     });
     return json({ person });

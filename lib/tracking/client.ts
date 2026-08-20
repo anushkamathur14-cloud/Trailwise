@@ -38,7 +38,7 @@ export function createWebClient(options: {
         properties,
         context:
           options.workspaceId === "web-demo"
-            ? { pageTitle: eventName, pageUrl: `https://forge.example/${eventName}` }
+            ? { pageTitle: eventName, pageUrl: `https://aurelia.example/${eventName}` }
             : { screenName: eventName, appVersion: "3.4.1" },
       });
     },

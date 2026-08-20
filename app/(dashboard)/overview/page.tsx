@@ -79,8 +79,15 @@ export default function OverviewPage() {
   const { workspace, workspaceId } = useWorkspace();
   const [segment, setSegment] = useState("");
   const [channel, setChannel] = useState("");
+  const [ecosystem, setEcosystem] = useState("");
   const [compareEvents, setCompareEvents] = useState<string[]>([]);
-  const qs = [segment && `segment=${segment}`, channel && `channel=${channel}`].filter(Boolean).join("&");
+  const qs = [
+    segment && `segment=${segment}`,
+    channel && `channel=${channel}`,
+    ecosystem && `ecosystem=${ecosystem}`,
+  ]
+    .filter(Boolean)
+    .join("&");
   const { data, loading, error } = useApi<Overview>(`/api/analytics/overview${qs ? `?${qs}` : ""}`, qs);
 
   const topEventNames = useMemo(() => (data?.features ?? []).slice(0, 6).map((f) => f.name), [data]);
@@ -106,7 +113,7 @@ export default function OverviewPage() {
     <div>
       <PageHeader
         title="Overview"
-        description={`${workspace.productName} product analytics — engagement, activation, and monetization from first-party events (not only install attribution).`}
+        description={workspace.productDescription}
       />
 
       <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
@@ -118,9 +125,6 @@ export default function OverviewPage() {
               {formatPercent(data.retentionRate)}
             </Badge>
           </div>
-          <p className="text-sm text-muted-foreground">
-            What matters now for {workspace.productName}: the opportunity (impact), what to change (action), and the expected lift if you ship it.
-          </p>
         </CardHeader>
         <CardContent className="grid gap-3 lg:grid-cols-3">
           {tldr.map((item) => (
@@ -163,6 +167,14 @@ export default function OverviewPage() {
                 {item}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          Ecosystem
+          <select className="ml-2 h-9 rounded-md border px-2" value={ecosystem} onChange={(e) => setEcosystem(e.target.value)}>
+            <option value="">All</option>
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
           </select>
         </label>
       </div>

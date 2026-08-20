@@ -6,6 +6,7 @@ import { MOBILE_EVENTS } from "@/lib/workspace";
 import type { PreviewId } from "@/lib/studio/variants";
 import type { ViewportMode } from "@/components/studio/device-frame";
 import { DeviceFrame } from "@/components/studio/device-frame";
+import { HeatmapOverlay } from "@/components/studio/heatmap-overlay";
 
 type Person = { id: string; anonymousId: string | null; userId: string | null };
 type Screen = "welcome" | "goal" | "permissions" | "home" | "session" | "result" | "reminder" | "paywall";
@@ -54,7 +55,7 @@ export function AureliaPreview({
         platform: "mobile",
         source: "tester",
         properties: { previewId, recommended, viewport, ...extra },
-        context: { screenName: screen, appVersion: "3.4.1", deviceType: viewport },
+        context: { screenName: screen, appVersion: "3.4.1", deviceType: viewport === "desktop" ? "ios" : "ios" },
       }),
     });
     if (!response.ok) {
@@ -64,12 +65,17 @@ export function AureliaPreview({
     onEvent(eventName);
   }
 
-  function onFrameClick(event: MouseEvent<HTMLDivElement>) {
+  function recordHeat(event: MouseEvent<HTMLDivElement>) {
     if (!heatmapEnabled || !frameRef.current) return;
     const rect = frameRef.current.getBoundingClientRect();
-    const x = (event.clientX - rect.left) / rect.width;
-    const y = (event.clientY - rect.top) / rect.height;
-    const next = [...heat, { x, y, screen }];
+    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const scatter: HeatPoint[] = [
+      { x, y, screen },
+      { x: Math.min(1, Math.max(0, x + (Math.random() - 0.5) * 0.04)), y: Math.min(1, Math.max(0, y + (Math.random() - 0.5) * 0.04)), screen },
+      { x: Math.min(1, Math.max(0, x + (Math.random() - 0.5) * 0.06)), y: Math.min(1, Math.max(0, y + (Math.random() - 0.5) * 0.05)), screen },
+    ];
+    const next = [...heat, ...scatter];
     setHeat(next);
     void track("ui_click", { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), screen, heatmap: true, viewport });
   }
@@ -88,18 +94,15 @@ export function AureliaPreview({
       <div
         ref={frameRef}
         className={`relative overflow-hidden ${wide ? "min-h-[560px] bg-gradient-to-br from-[#f5f0e8] via-[#efe8dc] to-[#e8dfd0]" : "min-h-[560px] bg-[#f7f3ec]"}`}
-        onClick={onFrameClick}
+        onClickCapture={recordHeat}
       >
-        {heatmapEnabled &&
-          heat
-            .filter((point) => point.screen === screen)
-            .map((point, index) => (
-              <span
-                key={index}
-                className="pointer-events-none absolute z-30 size-10 -translate-x-1/2 -translate-y-1/2 rounded-full bg-rose-500/35 ring-2 ring-rose-400/50"
-                style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-              />
-            ))}
+        {heatmapEnabled && (
+          <HeatmapOverlay
+            enabled={heatmapEnabled}
+            points={heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }))}
+            radius={64}
+          />
+        )}
 
         <div className={`relative z-10 ${wide ? "mx-auto grid max-w-4xl gap-8 p-8 md:grid-cols-[1fr_1.1fr]" : "px-5 py-6"}`}>
           {wide && (

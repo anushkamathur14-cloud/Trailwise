@@ -22,7 +22,8 @@ export default function JourneysPage() {
   const eventNames = useMemo(() => eventDefinitionsFor(workspaceId).map((e) => e.name), [workspaceId]);
   const [start, setStart] = useState(workspace.defaultJourney.start);
   const [end, setEnd] = useState(workspace.defaultJourney.end);
-  const [maxSteps, setMaxSteps] = useState(8);
+  const [maxSteps, setMaxSteps] = useState(5);
+  const [ecosystem, setEcosystem] = useState<"all" | "ios" | "android">("all");
   const [selected, setSelected] = useState<string | null>(null);
 
   useEffect(() => {
@@ -31,23 +32,23 @@ export default function JourneysPage() {
   }, [workspaceId, workspace.defaultJourney.start, workspace.defaultJourney.end]);
 
   const { data, loading, error } = useApi<Graph>(
-    `/api/analytics/journeys?start=${start}&end=${end}&maxSteps=${maxSteps}`,
-    `${start}-${end}-${maxSteps}-${workspaceId}`,
+    `/api/analytics/journeys?start=${start}&end=${end}&maxSteps=${maxSteps}${ecosystem !== "all" ? `&ecosystem=${ecosystem}` : ""}`,
+    `${start}-${end}-${maxSteps}-${workspaceId}-${ecosystem}`,
   );
 
   return (
     <div>
       <PageHeader
         title="Journeys"
-        description="How people move from a start event to an outcome. Each column is a step depth — the same event name in two columns means it happened at different points in the path. This layered layout prevents circular Sankey links."
+        description="How people move from a start event to an outcome. Late-stage rare branches are pruned so the right side stays readable."
       />
       <Card className="mb-4">
         <CardContent className="space-y-2 p-4 text-sm text-muted-foreground">
           <p>
-            <strong className="text-foreground">How to read this:</strong> Pick a start (e.g. landing / app open) and an end (activation or monetization). Trailwise builds each user’s ordered path, collapses consecutive duplicates, then stacks those paths into a flow diagram.
+            <strong className="text-foreground">How to read this:</strong> Pick a start and an end. Trailwise builds ordered paths, collapses consecutive duplicates, then shows the main flows. After step 3, only the strongest branches remain.
           </p>
           <p>
-            Wider ribbons = more people took that transition. Indigo nodes sit on the most successful path; rose nodes sit on the most common failure path.
+            Wider ribbons = more people. Indigo = successful path events; rose = common failure path. Lower max steps if the chart still feels busy.
           </p>
         </CardContent>
       </Card>
@@ -70,7 +71,19 @@ export default function JourneysPage() {
         </label>
         <label className="text-sm">
           Max steps
-          <input type="number" min={3} max={12} className="ml-2 h-9 w-16 rounded-md border px-2" value={maxSteps} onChange={(e) => setMaxSteps(Number(e.target.value))} />
+          <input type="number" min={3} max={8} className="ml-2 h-9 w-16 rounded-md border px-2" value={maxSteps} onChange={(e) => setMaxSteps(Number(e.target.value))} />
+        </label>
+        <label className="text-sm">
+          Ecosystem
+          <select
+            className="ml-2 h-9 rounded-md border px-2"
+            value={ecosystem}
+            onChange={(e) => setEcosystem(e.target.value as "all" | "ios" | "android")}
+          >
+            <option value="all">All</option>
+            <option value="ios">iOS</option>
+            <option value="android">Android</option>
+          </select>
         </label>
       </div>
       <Card>

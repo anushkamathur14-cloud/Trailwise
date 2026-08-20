@@ -53,8 +53,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             value={workspaceId}
             onChange={(event) => setWorkspaceId(event.target.value as typeof workspaceId)}
           >
-            <option value="web-demo">Web Demo · Forge</option>
-            <option value="mobile-demo">Mobile App Demo · Aurelia</option>
+            <option value="web-demo">Aurelia Web</option>
+            <option value="mobile-demo">Aurelia App</option>
           </select>
         </div>
         <nav className="mt-4 flex-1 space-y-0.5 px-2">

@@ -122,7 +122,7 @@ async function seedWeb(db: PrismaClient, seed: number) {
           country,
           browser: device === "desktop" ? "Chrome" : "Safari",
           pageTitle: eventName.replace(/_/g, " "),
-          pageUrl: `https://forge.example/${eventName.replace(/_/g, "-")}`,
+          pageUrl: `https://aurelia.example/${eventName.replace(/_/g, "-")}`,
         }),
         anonymousId,
         userId,
@@ -306,7 +306,7 @@ async function seedMobile(db: PrismaClient, seed: number) {
         contextJson: JSON.stringify({
           deviceType: device,
           country,
-          operatingSystem: device === "iphone" ? "iOS" : "Android",
+          operatingSystem: device === "iphone" || device === "ios" ? "iOS" : "Android",
           appVersion: "3.4.1",
           screenName: eventName.replace(/_/g, " "),
         }),

@@ -21,11 +21,14 @@ function isFailure(eventName: string): boolean {
 /**
  * Build a layered (acyclic) journey graph.
  * Nodes are step-indexed (`0:landing_viewed`) so revisits cannot create cycles for Sankey.
+ * Later steps are pruned so the right side of the chart stays readable.
  */
 export function buildJourneyGraph(
   events: PathEvent[],
-  options: { start: string; end?: string; maxSteps: number },
+  options: { start: string; end?: string; maxSteps: number; minLinkShare?: number; maxBranchesPerStep?: number },
 ): JourneyGraph {
+  const minLinkShare = options.minLinkShare ?? 0.04;
+  const maxBranches = options.maxBranchesPerStep ?? 3;
   const byPerson = new Map<string, PathEvent[]>();
   for (const event of events) {
     const list = byPerson.get(event.personId) ?? [];
@@ -68,6 +71,52 @@ export function buildJourneyGraph(
     pathCounts.set(pathKey, current);
   }
 
+  // Prune rare late-stage branches so the Sankey does not fan out into noise.
+  const stepVolume = new Map<number, number>();
+  for (const meta of nodeCounts.values()) {
+    stepVolume.set(meta.step, (stepVolume.get(meta.step) ?? 0) + meta.count);
+  }
+
+  const linksBySource = new Map<string, Array<{ key: string; value: number; target: string }>>();
+  for (const [key, value] of linkCounts.entries()) {
+    const [source, target] = key.split("→");
+    const list = linksBySource.get(source) ?? [];
+    list.push({ key, value, target });
+    linksBySource.set(source, list);
+  }
+
+  const keptLinks = new Map<string, number>();
+  const keptNodes = new Set<string>();
+
+  // Always keep step-0 nodes that appeared
+  for (const [id, meta] of nodeCounts.entries()) {
+    if (meta.step === 0) keptNodes.add(id);
+  }
+
+  const sources = [...linksBySource.keys()].sort((a, b) => Number(a.split(":")[0]) - Number(b.split(":")[0]));
+  for (const source of sources) {
+    if (!keptNodes.has(source) && Number(source.split(":")[0]) > 0) continue;
+    const step = Number(source.split(":")[0]);
+    const volume = stepVolume.get(step) ?? 1;
+    let candidates = [...(linksBySource.get(source) ?? [])].sort((a, b) => b.value - a.value);
+    // Stricter pruning after the first few steps
+    const branchCap = step >= 3 ? Math.min(2, maxBranches) : maxBranches;
+    const shareFloor = step >= 3 ? Math.max(minLinkShare, 0.08) : minLinkShare;
+    candidates = candidates.filter((link) => link.value / volume >= shareFloor || step < 2).slice(0, branchCap);
+    for (const link of candidates) {
+      keptLinks.set(link.key, link.value);
+      keptNodes.add(source);
+      keptNodes.add(link.target);
+    }
+  }
+
+  // Ensure end-event nodes on successful paths remain if present
+  if (options.end) {
+    for (const [id, meta] of nodeCounts.entries()) {
+      if (meta.eventName === options.end) keptNodes.add(id);
+    }
+  }
+
   const paths = [...pathCounts.values()];
   const successful = paths
     .filter((path) => (options.end ? path.path.includes(options.end) : !path.path.some(isFailure)))
@@ -77,20 +126,22 @@ export function buildJourneyGraph(
     .sort((a, b) => b.count - a.count)[0];
 
   return {
-    nodes: [...nodeCounts.entries()].map(([id, meta]) => ({
-      id,
-      label: `${meta.step + 1}. ${meta.eventName.replace(/_/g, " ")}`,
-      count: meta.count,
-      step: meta.step,
-      eventName: meta.eventName,
-    })),
-    links: [...linkCounts.entries()].map(([key, value]) => {
+    nodes: [...nodeCounts.entries()]
+      .filter(([id]) => keptNodes.has(id))
+      .map(([id, meta]) => ({
+        id,
+        label: `${meta.step + 1}. ${meta.eventName.replace(/_/g, " ")}`,
+        count: meta.count,
+        step: meta.step,
+        eventName: meta.eventName,
+      })),
+    links: [...keptLinks.entries()].map(([key, value]) => {
       const [source, target] = key.split("→");
       return { source, target, value };
     }),
     successfulPath: successful?.path ?? [],
     failurePath: failure?.path ?? [],
     explanation:
-      "Each column is a step from your start event. The same event name can appear in multiple columns if it occurs at different depths. Flows never loop, so the Sankey stays readable.",
+      "Each column is a step from your start event. Rare late-stage branches are hidden so the end of the path stays readable — toggle max steps down for an even sharper view.",
   };
 }

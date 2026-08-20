@@ -20,11 +20,15 @@ export function rangeFrom(request: Request) {
   const url = new URL(request.url);
   const from = url.searchParams.get("from");
   const to = url.searchParams.get("to");
+  const ecosystem = url.searchParams.get("ecosystem");
+  const deviceParam = url.searchParams.get("device") || undefined;
+  const device =
+    ecosystem === "ios" || ecosystem === "android" ? ecosystem : deviceParam;
   return {
     from: from ? new Date(from) : new Date("2026-07-21T00:00:00.000Z"),
     to: to ? new Date(to) : new Date("2026-08-18T23:59:59.000Z"),
     channel: url.searchParams.get("channel") || undefined,
-    device: url.searchParams.get("device") || undefined,
+    device,
     segment: url.searchParams.get("segment") || undefined,
   };
 }

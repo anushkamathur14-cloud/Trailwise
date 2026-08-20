@@ -7,72 +7,68 @@ import { Button } from "@/components/ui/button";
 import { WORKSPACES } from "@/lib/workspace";
 
 export default function HowItWorksPage() {
-  const forge = WORKSPACES["web-demo"];
-  const aurelia = WORKSPACES["mobile-demo"];
+  const web = WORKSPACES["web-demo"];
+  const app = WORKSPACES["mobile-demo"];
 
   return (
     <div>
       <PageHeader
         title="How it works"
-        description="Trailwise is a product-analytics demo: collect events, analyze journeys and funnels, surface signals, recommend changes, then preview those changes as a mock end user."
+        description="Trailwise is product analytics for Aurelia — one brand across web and app — plus Tester Mode to feel the experience and compare sessions to historic behaviour."
       />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Forge · Web Demo</CardTitle>
+            <CardTitle>Aurelia · Web</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>{forge.productDescription}</p>
+            <p>{web.productDescription}</p>
             <p>
-              <strong>Primary goal:</strong> {forge.primaryGoal.description}
+              <strong>Primary goal:</strong> {web.primaryGoal.description}
             </p>
             <p>
-              <strong>Secondary goal:</strong> {forge.secondaryGoal.description}
+              <strong>Secondary goal:</strong> {web.secondaryGoal.description}
             </p>
-            <p>
-              <strong>Personas:</strong>{" "}
-              {forge.segments.map((s) => s.name).join(", ")}
+            <p className="text-muted-foreground">
+              Personas: {web.segments.map((s) => s.name).join(", ")}
             </p>
             <Button asChild variant="outline">
-              <Link href="/overview">Open Forge workspace metrics</Link>
+              <Link href="/overview">Open Aurelia Web metrics</Link>
             </Button>
           </CardContent>
         </Card>
         <Card>
           <CardHeader>
-            <CardTitle>Aurelia · Mobile App Demo</CardTitle>
+            <CardTitle>Aurelia · App</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>{aurelia.productDescription}</p>
+            <p>{app.productDescription}</p>
             <p>
-              <strong>Primary goal:</strong> {aurelia.primaryGoal.description}
+              <strong>Primary goal:</strong> {app.primaryGoal.description}
             </p>
             <p>
-              <strong>Secondary goal:</strong> {aurelia.secondaryGoal.description}
+              <strong>Secondary goal:</strong> {app.secondaryGoal.description}
             </p>
-            <p>
-              <strong>Personas:</strong>{" "}
-              {aurelia.segments.map((s) => s.name).join(", ")}
+            <p className="text-muted-foreground">
+              Personas: {app.segments.map((s) => s.name).join(", ")}
             </p>
             <Button asChild variant="outline">
-              <Link href="/events">See Aurelia event + SKAN map</Link>
+              <Link href="/overview">Switch to Aurelia App in the sidebar</Link>
             </Button>
           </CardContent>
         </Card>
       </div>
       <Card className="mt-4">
         <CardHeader>
-          <CardTitle>Demo loop</CardTitle>
+          <CardTitle>Suggested walkthrough</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <ol className="list-decimal space-y-2 pl-5">
-            <li>Switch workspace (Forge or Aurelia) in the sidebar.</li>
-            <li>Read Overview KPIs and segment definitions — these come from seeded events.</li>
-            <li>Inspect Event definitions and SKAN conversion values.</li>
-            <li>Open Marketing vs Monetization funnels (each step has a conversion value).</li>
-            <li>Explore Journeys: layered paths from start → end without circular Sankey links.</li>
-            <li>Create a tester in Experience Studio, click through the preview (heatmap optional).</li>
-            <li>Confirm events in Live activity, open the user profile, generate a recommendation, preview it.</li>
+        <CardContent>
+          <ol className="list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+            <li>Switch workspace (Aurelia Web or Aurelia App) in the sidebar.</li>
+            <li>Read Overview TLDR, then open Tester Mode with heatmap on.</li>
+            <li>Filter historic comparison by iOS or Android.</li>
+            <li>Inspect Journeys (pruned late steps) and Funnels with conversion values.</li>
+            <li>Preview a recommendation variant and watch Live activity.</li>
           </ol>
         </CardContent>
       </Card>
