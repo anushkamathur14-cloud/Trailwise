@@ -44,9 +44,9 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
   if (workspaceId === "web-demo") {
     return [
       {
-        id: "web-earlier-integration",
+        id: "web-earlier-wearable",
         kind: "product",
-        title: "Move integration assistance earlier",
+        title: "Move wearable assistance earlier",
         change: "Prompt new Aurelia web users to connect a wearable before they reach an empty practice plan.",
         evidence: "Users who connect a wearable in the first session activate more often than those who skip it. Connection errors also cluster with onboarding abandonment.",
         segment: "New sign-ups, first session",
@@ -55,24 +55,24 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         downside: "A longer first session may raise bounce for users who only wanted to browse.",
         successMetric: "Activation rate (practice plan + friend invite)",
         experiment: "Holdout 20% of new accounts on the current onboarding. Primary: activation. Guardrail: sign-up completion.",
-        previewId: "earlier-integration",
+        previewId: "earlier-wearable-help",
         impact: "First-session users stall on empty practice plans before connecting a wearable — a major activation leak.",
         expectedImpact: "+8–14% activation among new sign-ups (high confidence)",
       },
       {
-        id: "web-invite-prompt",
+        id: "web-friend-invite",
         kind: "product",
         title: "Prompt high-intent users to invite a friend",
         change: "After the first practice plan is created, show a contextual invite instead of burying it in settings.",
-        evidence: "Activation requires an invite. Users who stop after plan creation never complete the primary goal.",
+        evidence: "Activation requires a friend invite. Users who stop after plan creation never complete the primary goal.",
         segment: "Users with a plan and no invite",
         impactDirection: "increase",
         confidence: "medium",
         downside: "Premature invites can annoy solo evaluators.",
         successMetric: "Friend invite rate within 24 hours",
         experiment: "Show invite modal vs settings-only. Guardrail: plan creation rate.",
-        previewId: "invite-prompt",
-        impact: "High-intent users create a plan then leave without inviting — activation never closes.",
+        previewId: "friend-invite-prompt",
+        impact: "High-intent users create a practice plan then leave without inviting — activation never closes.",
         expectedImpact: "+10–18% invite rate within 24h for plan creators (medium confidence)",
       },
       {
@@ -80,8 +80,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         kind: "product",
         title: "Offer recovery guidance after a wearable error",
         change: "Replace the generic failure state with a retry path, demo data, and a human handoff.",
-        evidence: "Wearable errors are associated with onboarding abandonment. Recovery copy can keep the session alive.",
-        segment: "Users who hit integration_error",
+        evidence: "Wearable connection errors are associated with onboarding abandonment. Recovery copy can keep the session alive.",
+        segment: "Users who hit wearable_connection_error",
         impactDirection: "increase",
         confidence: "high",
         downside: "Retry loops without a skip option may increase frustration.",
@@ -150,43 +150,43 @@ export function userRecommendation(profile: UserSignals): UserRecommendation {
   const names = new Set(profile.eventNames);
 
   if (profile.workspaceId === "web-demo") {
-    if (names.has(WEB_EVENTS.integrationError) && !names.has(WEB_EVENTS.projectCreated)) {
+    if (names.has(WEB_EVENTS.wearableConnectionError) && !names.has(WEB_EVENTS.practicePlanCreated)) {
       return {
         id: "user-error-recovery",
         kind: "user",
         title: "Show error-recovery onboarding",
-        experience: "Open the integration retry screen with sample data and a skip-to-project path.",
-        why: "This user hit an integration error and has not created a project.",
-        signals: ["Encountered integration error", "No project created"],
+        experience: "Open the wearable retry screen with sample data and a skip-to-plan path.",
+        why: "This user hit a wearable connection error and has not created a practice plan.",
+        signals: ["Encountered wearable connection error", "No practice plan created"],
         suppression: ["Already activated", "Converted to paid"],
         confidence: "high",
         previewId: "error-recovery",
       };
     }
-    if (!names.has(WEB_EVENTS.integrationConnected) && names.has(WEB_EVENTS.accountCreated)) {
+    if (!names.has(WEB_EVENTS.wearableConnected) && names.has(WEB_EVENTS.accountCreated)) {
       return {
-        id: "user-connect-integration",
+        id: "user-connect-wearable",
         kind: "user",
-        title: "Encourage connecting an integration",
-        experience: "Launch onboarding with integration assistance first.",
-        why: "Identified users who skip the integration activate less often in the seeded population.",
-        signals: ["Account created", "No integration connected"],
-        suppression: ["Already connected an integration"],
+        title: "Encourage connecting a wearable",
+        experience: "Launch onboarding with wearable assistance first.",
+        why: "Identified users who skip the wearable activate less often in the seeded population.",
+        signals: ["Account created", "No wearable connected"],
+        suppression: ["Already connected a wearable"],
         confidence: "medium",
-        previewId: "earlier-integration",
+        previewId: "earlier-wearable-help",
       };
     }
-    if (names.has(WEB_EVENTS.projectCreated) && !names.has(WEB_EVENTS.teammateInvited)) {
+    if (names.has(WEB_EVENTS.practicePlanCreated) && !names.has(WEB_EVENTS.friendInvited)) {
       return {
         id: "user-invite",
         kind: "user",
-        title: "Prompt this user to invite a teammate",
-        experience: "Show the team invite immediately after the project canvas.",
-        why: "Activation requires a teammate invite. This user created a project and stopped.",
-        signals: ["Project created", "No teammate invited"],
-        suppression: ["Already invited a teammate"],
+        title: "Prompt this user to invite a friend",
+        experience: "Show the friend invite immediately after the practice plan.",
+        why: "Activation requires a friend invite. This user created a practice plan and stopped.",
+        signals: ["Practice plan created", "No friend invited"],
+        suppression: ["Already invited a friend"],
         confidence: "high",
-        previewId: "invite-prompt",
+        previewId: "friend-invite-prompt",
       };
     }
     if ((profile.traits.pricingViews as number | undefined) && (profile.traits.pricingViews as number) >= 3 && !names.has(WEB_EVENTS.accountCreated)) {

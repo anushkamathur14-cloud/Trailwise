@@ -86,7 +86,7 @@ describe("ingestion and identity", () => {
       prisma,
       "web-demo",
       {
-        eventName: "project_created",
+        eventName: "practice_plan_created",
         anonymousId: "tester_anon",
         platform: "web",
         source: "tester",
@@ -97,6 +97,6 @@ describe("ingestion and identity", () => {
     expect(result.accepted).toBe(true);
     const stored = await prisma.event.findUnique({ where: { eventId: result.eventId } });
     expect(stored?.source).toBe("tester");
-    expect(stored?.eventName).toBe("project_created");
+    expect(stored?.eventName).toBe("practice_plan_created");
   });
 });

@@ -50,6 +50,18 @@ type Recs = {
   } | null;
 };
 
+function confidenceLabel(value: string) {
+  if (value === "high") return "High confidence";
+  if (value === "medium") return "Medium confidence";
+  return "Exploratory";
+}
+
+function priorityLabel(direction: string) {
+  if (direction === "increase") return "Priority: High";
+  if (direction === "decrease") return "Priority: Medium";
+  return "Priority: Exploratory";
+}
+
 export default function RecommendationsPage() {
   return (
     <Suspense fallback={<p className="text-sm text-muted-foreground">Loading recommendations…</p>}>
@@ -68,7 +80,7 @@ function RecommendationsInner() {
   );
   const [userRec, setUserRec] = useState<Recs["user"]>(null);
   const [heatRec, setHeatRec] = useState<Recs["fromHeatmap"]>(null);
-  const [enhanced, setEnhanced] = useState<Record<string, string>>({});
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (data?.user) setUserRec(data.user);
@@ -82,16 +94,6 @@ function RecommendationsInner() {
     setHeatRec(json.fromHeatmap);
   }
 
-  async function enhance(id: string, title: string, evidence: string, experiment: string) {
-    const response = await fetch("/api/recommendations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "product", title, evidence, experiment }),
-    });
-    const json = await response.json();
-    setEnhanced((current) => ({ ...current, [id]: `${json.source}: ${json.text}` }));
-  }
-
   if (loading) return <p className="text-sm text-muted-foreground">Loading recommendations…</p>;
   if (error || !data) return <p className="text-sm text-rose-700">{error ?? "Could not load recommendations."}</p>;
 
@@ -99,38 +101,24 @@ function RecommendationsInner() {
     <div>
       <PageHeader
         title="Recommendations"
-        description="Product changes linked to events and heatmap hotspots. Preview opens Tester Mode on the matching journey."
+        description="Ranked product changes with behavioral evidence. Preview opens Experience Studio on the matching variant."
       />
 
       {heatRec && (
         <Card className="mb-6 border-emerald-200 bg-emerald-50/40">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>From heatmap + events</CardTitle>
-              <Badge>{heatRec.confidence}</Badge>
+              <CardTitle>From recent session heat</CardTitle>
+              <Badge>{confidenceLabel(heatRec.confidence)}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
             <div className="font-medium">{heatRec.title}</div>
             <p>{heatRec.why}</p>
             <p className="font-medium">{heatRec.action}</p>
-            <div className="grid gap-2 sm:grid-cols-3 text-xs">
-              <div>
-                <div className="text-muted-foreground">Hotspot screens</div>
-                <div>{heatRec.hotspotScreens.join(", ") || "—"}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Trigger events</div>
-                <div>{heatRec.triggerEvents.map((e) => e.replace(/_/g, " ")).join(", ") || "—"}</div>
-              </div>
-              <div>
-                <div className="text-muted-foreground">Next events</div>
-                <div>{heatRec.nextEvents.map((e) => e.replace(/_/g, " ")).join(" → ")}</div>
-              </div>
-            </div>
             <Button asChild>
               <Link href={`/studio?${personId ? `personId=${personId}&` : ""}preview=${heatRec.previewId}`}>
-                Preview recommended experience
+                Preview change
               </Link>
             </Button>
           </CardContent>
@@ -138,74 +126,86 @@ function RecommendationsInner() {
       )}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {data.product.map((rec) => (
-          <Card key={rec.id} className="flex flex-col">
-            <CardHeader className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <CardTitle className="text-base leading-snug">{rec.title}</CardTitle>
-                <Badge>{rec.confidence}</Badge>
-              </div>
-              <p className="text-sm text-muted-foreground">{rec.change}</p>
-            </CardHeader>
-            <CardContent className="mt-auto space-y-3 text-sm">
-              <div className="rounded-md bg-muted/60 p-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Impact</div>
-                <p className="mt-1">{rec.impact ?? rec.evidence}</p>
-              </div>
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-emerald-900">
-                <div className="text-xs font-medium uppercase tracking-wide">Expected impact</div>
-                <p className="mt-1">{rec.expectedImpact ?? `Lift on ${rec.successMetric}`}</p>
-              </div>
-              <div className="rounded-md bg-muted/60 p-3">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Evidence</div>
-                <p className="mt-1">{rec.evidence}</p>
-              </div>
-              {rec.heatmapHint && (
-                <div className="rounded-md border border-rose-200/70 bg-rose-50/50 p-3 text-xs">
-                  <div className="font-medium uppercase tracking-wide text-rose-800">Heatmap link</div>
-                  <p className="mt-1 text-rose-950/80">{rec.heatmapHint}</p>
-                  {rec.hotspotScreens && rec.hotspotScreens.length > 0 && (
-                    <p className="mt-1 text-muted-foreground">Screens: {rec.hotspotScreens.join(", ")}</p>
-                  )}
-                  {rec.relatedEvents && rec.relatedEvents.length > 0 && (
-                    <p className="text-muted-foreground">
-                      Drive events: {rec.relatedEvents.map((e) => e.replace(/_/g, " ")).join(" → ")}
-                    </p>
-                  )}
+        {data.product.map((rec) => {
+          const open = expanded[rec.id];
+          return (
+            <Card key={rec.id} className="flex flex-col">
+              <CardHeader className="space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <CardTitle className="text-base leading-snug">{rec.title}</CardTitle>
+                  <Badge variant="secondary">{confidenceLabel(rec.confidence)}</Badge>
                 </div>
-              )}
-              <div className="grid grid-cols-2 gap-2 text-xs">
-                <div>
-                  <div className="text-muted-foreground">Segment</div>
-                  <div>{rec.segment}</div>
+                <p className="text-sm text-muted-foreground">{rec.evidence}</p>
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <Badge variant="outline">{priorityLabel(rec.impactDirection)}</Badge>
+                  <span className="text-muted-foreground">
+                    Est. impact: {rec.expectedImpact ?? rec.successMetric} (estimate)
+                  </span>
                 </div>
-                <div>
-                  <div className="text-muted-foreground">Success metric</div>
-                  <div>{rec.successMetric}</div>
+                <p className="text-xs text-muted-foreground">Segment: {rec.segment}</p>
+              </CardHeader>
+              <CardContent className="mt-auto space-y-3 text-sm">
+                <div className="flex flex-wrap gap-2">
+                  <Button asChild>
+                    <Link href={`/studio?preview=${rec.previewId}`}>Preview change</Link>
+                  </Button>
+                  <Button variant="outline" onClick={() => setExpanded((c) => ({ ...c, [rec.id]: !open }))}>
+                    {open ? "Hide analysis" : "View analysis"}
+                  </Button>
                 </div>
-              </div>
-              <p className="text-xs text-muted-foreground">Experiment: {rec.experiment}</p>
-              {enhanced[rec.id] && <p className="rounded-md bg-muted p-3 text-xs text-muted-foreground">{enhanced[rec.id]}</p>}
-              <div className="flex flex-wrap gap-2 pt-1">
-                <Button asChild>
-                  <Link href={`/studio?preview=${rec.previewId}`}>Preview in Tester Mode</Link>
-                </Button>
-                <Button variant="outline" onClick={() => enhance(rec.id, rec.title, rec.evidence, rec.experiment)}>
-                  Enhance copy
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                {open && (
+                  <div className="space-y-3 rounded-md border bg-muted/30 p-3 text-xs">
+                    <div>
+                      <div className="font-medium uppercase tracking-wide text-muted-foreground">Full evidence</div>
+                      <p className="mt-1 text-sm">{rec.impact ?? rec.evidence}</p>
+                      <p className="mt-1 text-muted-foreground">{rec.evidence}</p>
+                    </div>
+                    {rec.heatmapHint && (
+                      <div>
+                        <div className="font-medium uppercase tracking-wide text-muted-foreground">Behavioral evidence</div>
+                        <p className="mt-1">{rec.heatmapHint}</p>
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <div className="text-muted-foreground">Target behavior</div>
+                        <div>{rec.relatedEvents?.map((e) => e.replace(/_/g, " ")).join(" → ") || rec.successMetric}</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Guardrail</div>
+                        <div>{rec.downside}</div>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-muted-foreground">Experiment design</div>
+                      <p className="mt-1">{rec.experiment}</p>
+                    </div>
+                    {rec.hotspotScreens && rec.hotspotScreens.length > 0 && (
+                      <div>
+                        <div className="text-muted-foreground">Relevant screens</div>
+                        <p className="mt-1">{rec.hotspotScreens.join(", ")}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
+
       <Card className="mt-6">
         <CardHeader>
-          <CardTitle>User-level next best action</CardTitle>
+          <CardTitle>Recommend next action</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex max-w-xl gap-2">
-            <Input placeholder="Person id from Users / Tester" value={personId} onChange={(e) => setPersonId(e.target.value)} />
-            <Button onClick={loadUser}>Analyze user</Button>
+            <Input
+              placeholder="User ID from Users / Experience Studio"
+              value={personId}
+              onChange={(e) => setPersonId(e.target.value)}
+            />
+            <Button onClick={loadUser}>Recommend next action</Button>
           </div>
           {userRec && (
             <div className="mt-4 max-w-2xl space-y-2 rounded-lg border p-4 text-sm">
@@ -214,9 +214,7 @@ function RecommendationsInner() {
               <p>{userRec.experience}</p>
               <p className="text-xs text-muted-foreground">Signals: {userRec.signals.join(", ")}</p>
               <Button asChild className="mt-2">
-                <Link href={`/studio?personId=${personId}&preview=${userRec.previewId}`}>
-                  Preview in Tester Mode
-                </Link>
+                <Link href={`/studio?personId=${personId}&preview=${userRec.previewId}`}>Preview change</Link>
               </Button>
             </div>
           )}

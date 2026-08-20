@@ -50,15 +50,15 @@ export function computeTraits(
   if (workspaceId === "web-demo") {
     const pricingViews = names.filter((name) => name === WEB_EVENTS.pricingViewed).length;
     const connectedInFirstSession = firstSessionEvents.some(
-      (event) => event.eventName === WEB_EVENTS.integrationConnected,
+      (event) => event.eventName === WEB_EVENTS.wearableConnected,
     );
-    const hadIntegrationError = names.includes(WEB_EVENTS.integrationError);
+    const hadWearableError = names.includes(WEB_EVENTS.wearableConnectionError);
     return {
       pricingViews,
-      connectedIntegrationFirstSession: connectedInFirstSession,
-      encounteredIntegrationError: hadIntegrationError,
-      invitedTeammate: names.includes(WEB_EVENTS.teammateInvited),
-      createdProject: names.includes(WEB_EVENTS.projectCreated),
+      connectedWearableFirstSession: connectedInFirstSession,
+      encounteredWearableError: hadWearableError,
+      invitedFriend: names.includes(WEB_EVENTS.friendInvited),
+      createdPracticePlan: names.includes(WEB_EVENTS.practicePlanCreated),
     };
   }
 

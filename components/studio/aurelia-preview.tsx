@@ -21,6 +21,7 @@ export function AureliaPreview({
   workspaceId,
   heatmapEnabled,
   viewport,
+  platformDevice = "ios",
   onEvent,
   onHeatChange,
   onScreenChange,
@@ -29,12 +30,14 @@ export function AureliaPreview({
   overlayPoints,
   recordClicks = true,
 }: {
-  person: Person;
+  person: Person | null;
   recommended: boolean;
   previewId: PreviewId;
   workspaceId: string;
   heatmapEnabled: boolean;
   viewport: ViewportMode;
+  /** ios | android for historic/device tagging */
+  platformDevice?: "ios" | "android";
   onEvent: (name: string) => void;
   onHeatChange?: (points: HeatPoint[]) => void;
   onScreenChange?: (screen: string) => void;
@@ -72,6 +75,10 @@ export function AureliaPreview({
   }, [heat, onHeatChange, interactive]);
 
   async function track(eventName: string, extra?: Record<string, unknown>) {
+    if (!person) {
+      onEvent(`${eventName} (preview only)`);
+      return;
+    }
     const response = await fetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -83,7 +90,7 @@ export function AureliaPreview({
         platform: "mobile",
         source: "tester",
         properties: { previewId, recommended, viewport, ...extra },
-        context: { screenName: screen, appVersion: "3.4.1", deviceType: viewport === "desktop" ? "ios" : "ios" },
+        context: { screenName: screen, appVersion: "3.4.1", deviceType: platformDevice },
       }),
     });
     if (!response.ok) {

@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { workspaceFrom } from "@/lib/http";
 import { withDemoDb } from "@/lib/api";
 import { parseJson } from "@/lib/utils";
+import { deviceTypesForFilter } from "@/lib/analytics/behavior";
 
 export async function GET(request: Request) {
   return withDemoDb(async () => {
@@ -12,12 +13,15 @@ export async function GET(request: Request) {
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 40), 100);
     const testers = url.searchParams.get("testers") === "1";
     const segment = url.searchParams.get("segment") || undefined;
+    const device = url.searchParams.get("device") || undefined;
+    const devices = deviceTypesForFilter(device);
 
     const people = await prisma.person.findMany({
       where: {
         workspaceId,
         ...(testers ? { isTester: true } : {}),
         ...(segment ? { segment } : {}),
+        ...(devices ? { deviceType: { in: devices } } : {}),
         ...(q
           ? {
               OR: [

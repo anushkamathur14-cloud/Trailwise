@@ -55,7 +55,7 @@ describe("funnels", () => {
 });
 
 describe("signal lift", () => {
-  it("computes lift and polarity", () => {
+  it("computes relative lift and polarity", () => {
     const rows = [
       ...Array.from({ length: 40 }, (_, i) => ({ personId: `a${i}`, hasSignal: true, converted: i < 28 })),
       ...Array.from({ length: 40 }, (_, i) => ({ personId: `b${i}`, hasSignal: false, converted: i < 10 })),
@@ -63,7 +63,8 @@ describe("signal lift", () => {
     const result = calculateSignalLift(rows);
     expect(result.usersWithSignal).toBe(40);
     expect(result.polarity).toBe("positive");
-    expect(result.lift).toBeGreaterThan(0.5);
+    expect(result.relativeLift).not.toBeNull();
+    expect(result.relativeLift!).toBeGreaterThan(0.5);
     expect(result.belowSampleThreshold).toBe(false);
   });
 
@@ -75,6 +76,17 @@ describe("signal lift", () => {
     const result = calculateSignalLift(rows, MIN_SAMPLE);
     expect(result.belowSampleThreshold).toBe(true);
     expect(result.confidence).toBe("low");
+  });
+
+  it("returns null relativeLift when baseline conversion is zero", () => {
+    const rows = [
+      ...Array.from({ length: 40 }, (_, i) => ({ personId: `a${i}`, hasSignal: true, converted: i < 20 })),
+      ...Array.from({ length: 40 }, (_, i) => ({ personId: `b${i}`, hasSignal: false, converted: false })),
+    ];
+    const result = calculateSignalLift(rows);
+    expect(result.relativeLift).toBeNull();
+    expect(result.relativeLiftUnavailableReason).toMatch(/baseline/i);
+    expect(result.absoluteDifference).toBeGreaterThan(0);
   });
 });
 
@@ -99,12 +111,12 @@ describe("journey paths", () => {
 });
 
 describe("recommendation rules", () => {
-  it("recommends error recovery when an integration fails", () => {
+  it("recommends error recovery when a wearable connection fails", () => {
     const rec = userRecommendation({
       workspaceId: "web-demo",
       activated: false,
       converted: false,
-      eventNames: [WEB_EVENTS.accountCreated, WEB_EVENTS.integrationError],
+      eventNames: [WEB_EVENTS.accountCreated, WEB_EVENTS.wearableConnectionError],
       traits: {},
     });
     expect(rec.previewId).toBe("error-recovery");

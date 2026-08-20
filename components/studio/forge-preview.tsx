@@ -28,7 +28,7 @@ export function ForgePreview({
   overlayPoints,
   recordClicks = true,
 }: {
-  person: Person;
+  person: Person | null;
   recommended: boolean;
   previewId: PreviewId;
   workspaceId: string;
@@ -69,15 +69,20 @@ export function ForgePreview({
   }, []);
 
   useEffect(() => {
-    if (interactive) void track(WEB_EVENTS.landingViewed);
+    if (interactive && person) void track(WEB_EVENTS.landingViewed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [person?.id]);
 
   useEffect(() => {
     if (interactive) onHeatChange?.(heat);
   }, [heat, onHeatChange, interactive]);
 
   async function track(eventName: string, extra?: Record<string, unknown>) {
+    if (!person) {
+      onEvent(`${eventName} (preview only)`);
+      return;
+    }
+    const deviceType = viewport === "mobile" ? "mobile-web" : viewport === "tablet" ? "tablet" : "desktop";
     const response = await fetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -89,7 +94,7 @@ export function ForgePreview({
         platform: "web",
         source: "tester",
         properties: { previewId, recommended, viewport, ...extra },
-        context: { pageTitle: screen, pageUrl: `https://aurelia.example/${screen}`, deviceType: viewport === "mobile" ? "ios" : "desktop" },
+        context: { pageTitle: screen, pageUrl: `https://aurelia.example/${screen}`, deviceType },
       }),
     });
     if (!response.ok) {
@@ -117,10 +122,10 @@ export function ForgePreview({
   const displayHeat = overlayPoints ?? heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }));
 
   const copy = useMemo(() => {
-    if (recommended && previewId === "earlier-integration") {
+    if (recommended && previewId === "earlier-wearable-help") {
       return { cta: "Connect Apple Watch first", note: "Wearable before empty plan" };
     }
-    if (recommended && previewId === "invite-prompt") {
+    if (recommended && previewId === "friend-invite-prompt") {
       return { cta: "Invite a friend now", note: "Invite after plan created" };
     }
     if (recommended && previewId === "error-recovery") {
@@ -235,7 +240,7 @@ export function ForgePreview({
                 <Button
                   onClick={() => {
                     void track(WEB_EVENTS.accountCreated, { emailDomain: email.split("@")[1] ?? "unknown" });
-                    setScreen(recommended && previewId === "earlier-integration" ? "wearable" : "onboarding");
+                    setScreen(recommended && previewId === "earlier-wearable-help" ? "wearable" : "onboarding");
                   }}
                 >
                   Create account
@@ -270,15 +275,23 @@ export function ForgePreview({
                 ))}
               </div>
               {error && !recommended ? (
-                <Button variant="destructive" onClick={() => { void track(WEB_EVENTS.integrationError); void track(WEB_EVENTS.onboardingAbandoned); }}>
+                <Button variant="destructive" onClick={() => { void track(WEB_EVENTS.wearableConnectionError); void track(WEB_EVENTS.onboardingAbandoned); }}>
                   I give up
                 </Button>
               ) : (
-                <Button onClick={() => { void track(WEB_EVENTS.integrationConnected, { provider: "apple_watch" }); setScreen("plan"); }}>
+                <Button onClick={() => {
+                  void track(WEB_EVENTS.wearableConnectionStarted, { provider: "apple_watch" });
+                  void track(WEB_EVENTS.wearableConnected, { provider: "apple_watch" });
+                  setScreen("plan");
+                }}>
                   {copy.cta}
                 </Button>
               )}
-              <Button className="ml-2" variant="outline" onClick={() => { setError(true); void track(WEB_EVENTS.integrationError); }}>
+              <Button className="ml-2" variant="outline" onClick={() => {
+                setError(true);
+                void track(WEB_EVENTS.wearableConnectionStarted, { provider: "apple_watch" });
+                void track(WEB_EVENTS.wearableConnectionError);
+              }}>
                 Simulate error
               </Button>
             </FormShell>
@@ -287,12 +300,12 @@ export function ForgePreview({
           {screen === "plan" && (
             <FormShell
               title="Name your practice plan"
-              subtitle={recommended && previewId === "invite-prompt" ? "You’ll be asked to invite a friend next — watch this conversion window." : "An empty plan is the most common drop-off."}
+              subtitle={recommended && previewId === "friend-invite-prompt" ? "You’ll be asked to invite a friend next — watch this conversion window." : "An empty plan is the most common drop-off."}
             >
               <input className="mb-4 w-full rounded-md border border-[#e0d6c6] bg-white px-3 py-2 text-sm" defaultValue="Evening wind-down" />
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => { void track(WEB_EVENTS.projectCreated); setScreen("invite"); }}>Create plan</Button>
-                <Button variant="outline" onClick={() => void track(WEB_EVENTS.projectAbandoned)}>Leave empty</Button>
+                <Button onClick={() => { void track(WEB_EVENTS.practicePlanCreated); setScreen("invite"); }}>Create plan</Button>
+                <Button variant="outline" onClick={() => void track(WEB_EVENTS.practicePlanAbandoned)}>Leave empty</Button>
               </div>
             </FormShell>
           )}
@@ -304,7 +317,7 @@ export function ForgePreview({
             >
               <input className="mb-4 w-full rounded-md border border-[#e0d6c6] bg-white px-3 py-2 text-sm" placeholder="friend@email.com" />
               <div className="flex flex-wrap gap-2">
-                <Button onClick={() => { void track(WEB_EVENTS.teammateInvited); setScreen("upgrade"); }}>Send invite</Button>
+                <Button onClick={() => { void track(WEB_EVENTS.friendInvited); setScreen("upgrade"); }}>Send invite</Button>
                 <Button variant="ghost" onClick={() => setScreen("upgrade")}>Skip</Button>
               </div>
             </FormShell>

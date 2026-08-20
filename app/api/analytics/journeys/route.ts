@@ -12,7 +12,7 @@ export async function GET(request: Request) {
     const workspace = getWorkspace(workspaceId);
     const start = url.searchParams.get("start") ?? workspace.defaultJourney.start;
     const end = url.searchParams.get("end") ?? workspace.defaultJourney.end;
-    const maxSteps = Math.min(Number(url.searchParams.get("maxSteps") ?? 5), 8);
+    const maxSteps = Math.min(Number(url.searchParams.get("maxSteps") ?? 7), 8);
     return journeyQuery(prisma, workspaceId, range, start, end, maxSteps, {
       channel: range.channel,
       device: range.device,

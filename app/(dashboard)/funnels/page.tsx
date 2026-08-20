@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { DeviceFilter } from "@/components/device-filter";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
 import { formatDuration, formatPercent } from "@/lib/utils";
@@ -31,13 +32,14 @@ type FunnelResponse = {
 };
 
 export default function FunnelsPage() {
-  const { workspace } = useWorkspace();
+  const { workspace, workspaceId } = useWorkspace();
   const [funnelId, setFunnelId] = useState(workspace.funnels[0]?.id ?? "marketing");
   const [abandonedStep, setAbandonedStep] = useState<number | null>(null);
+  const [device, setDevice] = useState("");
   const active = workspace.funnels.find((f) => f.id === funnelId) ?? workspace.funnels[0];
   const { data, loading, error } = useApi<FunnelResponse>(
-    `/api/analytics/funnels?funnel=${funnelId}${abandonedStep !== null ? `&abandonedStep=${abandonedStep}` : ""}`,
-    `${funnelId}-${abandonedStep}`,
+    `/api/analytics/funnels?funnel=${funnelId}${abandonedStep !== null ? `&abandonedStep=${abandonedStep}` : ""}${device ? `&device=${device}` : ""}`,
+    `${funnelId}-${abandonedStep}-${device}`,
   );
 
   return (
@@ -59,6 +61,7 @@ export default function FunnelsPage() {
             {funnel.name}
           </Button>
         ))}
+        <DeviceFilter workspaceId={workspaceId} value={device} onChange={setDevice} />
       </div>
       {active && (
         <p className="mb-4 text-sm text-muted-foreground">

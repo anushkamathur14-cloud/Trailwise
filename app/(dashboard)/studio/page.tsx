@@ -1,24 +1,23 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { DeviceFilter } from "@/components/device-filter";
 import { useWorkspace } from "@/components/workspace-provider";
 import { ForgePreview } from "@/components/studio/forge-preview";
 import { AureliaPreview } from "@/components/studio/aurelia-preview";
 import { DeviceToolbar, type ViewportMode } from "@/components/studio/device-frame";
 import { VARIANTS, type PreviewId } from "@/lib/studio/variants";
 import { hashPii } from "@/lib/privacy/hash";
-import { recommendFromHeatmapSession, type HeatLinkedRecommendation } from "@/lib/recommendations/heatmap";
-import { syntheticHeatForScreen } from "@/lib/studio/synthetic-heat";
+import { previewConfigByVariant } from "@/lib/recommendations/preview-map";
 import { useApi } from "@/hooks/use-api";
-import { formatPercent } from "@/lib/utils";
+import { formatDuration, formatPercent } from "@/lib/utils";
+import { labelForEvent } from "@/lib/events/catalog";
 
 type Person = {
   id: string;
@@ -27,34 +26,28 @@ type Person = {
   displayName: string | null;
 };
 
-type HeatPoint = { x: number; y: number; screen: string };
-type Ecosystem = "all" | "ios" | "android";
 type Behavior = {
-  ecosystem: string;
+  device: string;
   totalEvents: number;
   topEvents: Array<{ name: string; count: number; share: number }>;
   topScreens: Array<{ name: string; count: number; share: number }>;
   environment: string;
+  baselineLabel: string;
+  stepStats: {
+    usersReachedStep: number;
+    stepCompletionRate: number;
+    mostCommonNextEvent: string | null;
+    mostCommonAbandonEvent: string | null;
+    medianTimeToNextMs: number | null;
+  };
 };
 
-const WEB_PREVIEWS: PreviewId[] = ["original", "earlier-integration", "invite-prompt", "error-recovery", "simplified-signup"];
+const WEB_PREVIEWS: PreviewId[] = ["original", "earlier-wearable-help", "friend-invite-prompt", "error-recovery", "simplified-signup"];
 const MOBILE_PREVIEWS: PreviewId[] = ["original", "delayed-paywall", "first-session-nudge", "permission-fallback"];
-
-const CONVERSION_WINDOWS: Record<string, string> = {
-  teammate_invited: "Activation window — plan + invite",
-  subscription_started: "Monetization window — paid upgrade",
-  session_completed: "Core engagement window — first value",
-  returned_next_day: "Retention window — day-1 return",
-  trial_started: "Monetization window — trial start",
-  account_created: "Acquisition → activation handoff",
-  integration_connected: "Activation precursor — wearable connected",
-  signup_abandoned: "Drop-off window — signup friction",
-  paywall_dismissed: "Monetization rejection",
-};
 
 export default function StudioPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading Tester Mode…</p>}>
+    <Suspense fallback={<p className="text-sm text-muted-foreground">Loading Experience Studio…</p>}>
       <StudioInner />
     </Suspense>
   );
@@ -65,23 +58,39 @@ function StudioInner() {
   const { workspaceId, workspace } = useWorkspace();
   const allowed = workspace.platform === "web" ? WEB_PREVIEWS : MOBILE_PREVIEWS;
   const initialPreview = (params.get("preview") as PreviewId) || "original";
-  const [mode, setMode] = useState<"original" | "recommended">("recommended");
+  const [mode, setMode] = useState<"original" | "recommended">(
+    initialPreview !== "original" ? "recommended" : "recommended",
+  );
   const [preview, setPreview] = useState<PreviewId>(allowed.includes(initialPreview) ? initialPreview : "original");
   const [person, setPerson] = useState<Person | null>(null);
+  const [sessionLabel, setSessionLabel] = useState<string | null>(null);
   const [log, setLog] = useState<string[]>([]);
-  const [heatmapEnabled, setHeatmapEnabled] = useState(true);
   const [viewport, setViewport] = useState<ViewportMode>(workspace.platform === "mobile" ? "mobile" : "desktop");
-  const [ecosystem, setEcosystem] = useState<Ecosystem>("all");
-  const [heat, setHeat] = useState<HeatPoint[]>([]);
-  const [currentScreen, setCurrentScreen] = useState(
-    workspace.platform === "web" ? "landing" : "welcome",
-  );
+  const [device, setDevice] = useState("");
+  const [currentScreen, setCurrentScreen] = useState(workspace.platform === "web" ? "landing" : "welcome");
   const [status, setStatus] = useState<string | null>(null);
-  const variant = VARIANTS[preview] ?? VARIANTS.original;
+  const [previewKey, setPreviewKey] = useState(0);
+
+  const variant = VARIANTS[mode === "original" ? "original" : preview === "original" ? (workspace.platform === "web" ? "earlier-wearable-help" : "delayed-paywall") : preview] ?? VARIANTS.original;
+  const mappingVariant =
+    preview === "original"
+      ? workspace.platform === "web"
+        ? "earlier-wearable-help"
+        : "delayed-paywall"
+      : preview;
+  const mapping = previewConfigByVariant(workspaceId, mappingVariant);
+
+  const historicQs = [
+    device ? `device=${device}` : "",
+    `screen=${currentScreen}`,
+    preview !== "original" ? `previewId=${preview}` : "",
+  ]
+    .filter(Boolean)
+    .join("&");
 
   const { data: historic } = useApi<Behavior>(
-    `/api/analytics/behavior?ecosystem=${ecosystem}`,
-    `${workspaceId}-${ecosystem}-${heatmapEnabled}`,
+    `/api/analytics/behavior?${historicQs}`,
+    `${workspaceId}-${historicQs}-${currentScreen}`,
   );
 
   useEffect(() => {
@@ -91,7 +100,16 @@ function StudioInner() {
   useEffect(() => {
     setViewport(workspace.platform === "mobile" ? "mobile" : "desktop");
     setCurrentScreen(workspace.platform === "web" ? "landing" : "welcome");
+    setDevice("");
   }, [workspace.platform]);
+
+  useEffect(() => {
+    const fromUrl = params.get("preview") as PreviewId | null;
+    if (fromUrl && allowed.includes(fromUrl)) {
+      setPreview(fromUrl);
+      setMode(fromUrl === "original" ? "original" : "recommended");
+    }
+  }, [params, allowed]);
 
   useEffect(() => {
     const personId = params.get("personId");
@@ -99,24 +117,22 @@ function StudioInner() {
     fetch(`/api/users/${personId}`)
       .then(async (r) => {
         const json = await r.json();
-        if (!r.ok) throw new Error(json.error || "Failed to load person");
+        if (!r.ok) throw new Error(json.error || "Failed to load user");
         setPerson(json.person);
       })
       .catch((error: Error) => setStatus(error.message));
   }, [params]);
-
-  const mirrorHeatPoints = useMemo(() => {
-    const synthetic = syntheticHeatForScreen(currentScreen, workspace.platform === "web" ? "web" : "mobile");
-    const live = heat.filter((point) => point.screen === currentScreen).map(({ x, y }) => ({ x, y }));
-    return [...synthetic, ...live];
-  }, [currentScreen, heat, workspace.platform]);
 
   async function createTester() {
     setStatus(null);
     const response = await fetch(`/api/tester?workspace=${workspaceId}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "new", ecosystem }),
+      body: JSON.stringify({
+        action: "new",
+        ecosystem: workspace.platform === "mobile" ? device || "ios" : undefined,
+        device: workspace.platform === "web" ? device || "desktop" : undefined,
+      }),
     });
     const json = await response.json();
     if (!response.ok || !json.person) {
@@ -124,360 +140,286 @@ function StudioInner() {
       return;
     }
     setPerson(json.person);
-    setLog((current) => [`Created tester ${hashPii(json.person.anonymousId)}`, ...current]);
-    setHeat([]);
+    setSessionLabel(`${mode === "original" ? "Original" : "Recommended"} session`);
+    setLog((current) => [`Started tester session · ${hashPii(json.person.anonymousId)}`, ...current]);
+    setPreviewKey((k) => k + 1);
   }
 
-  async function identifyTester() {
-    if (!person) return;
-    const userId = person.userId || `tester_user_${person.id.slice(-6)}`;
-    const response = await fetch("/api/identify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        workspaceId,
-        userId,
-        anonymousId: person.anonymousId,
-        traits: { name: person.displayName, tester: true },
-        platform: workspace.platform,
-        context: { deviceType: ecosystem === "android" ? "android" : ecosystem === "ios" ? "ios" : undefined },
-      }),
-    });
-    if (!response.ok) {
-      setStatus("Identify failed");
-      return;
-    }
-    setPerson({ ...person, userId });
-    setLog((current) => [`Identified ${hashPii(person.anonymousId)} → ${hashPii(userId)}`, ...current]);
+  function switchMode(next: "original" | "recommended") {
+    setMode(next);
+    setLog((current) => [
+      `Switched to ${next === "original" ? "Original" : "Recommended"} — new comparison session`,
+      ...current,
+    ]);
+    setSessionLabel(`${next === "original" ? "Original" : "Recommended"} comparison session`);
+    setPreviewKey((k) => k + 1);
   }
 
-  const onHeatChange = useCallback((points: HeatPoint[]) => setHeat(points), []);
+  const emittedEvents = useMemo(() => {
+    return log.filter(
+      (entry) =>
+        !entry.includes("(failed)") &&
+        !entry.includes("(preview only)") &&
+        !entry.startsWith("Started") &&
+        !entry.startsWith("Switched") &&
+        !entry.startsWith("Cleared") &&
+        !entry.includes(" "),
+    );
+  }, [log]);
 
-  const testerBars = useMemo(() => {
-    const byEvent = new Map<string, number>();
-    for (const entry of log) {
-      if (entry.includes("(failed)") || entry.startsWith("Created") || entry.startsWith("Identified") || entry.startsWith("Cleared")) continue;
-      const name = entry.replace("Injected ", "").trim();
-      if (!name || name.includes(" ")) continue;
-      byEvent.set(name, (byEvent.get(name) ?? 0) + 1);
-    }
-    const byScreen = new Map<string, number>();
-    for (const point of heat) byScreen.set(point.screen, (byScreen.get(point.screen) ?? 0) + 1);
-    const eventTotal = [...byEvent.values()].reduce((a, b) => a + b, 0) || 1;
-    const screenTotal = [...byScreen.values()].reduce((a, b) => a + b, 0) || 1;
-    const events = [...byEvent.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, count]) => ({ name, count, share: count / eventTotal }));
-    const screens = [...byScreen.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([name, count]) => ({ name, count, share: count / screenTotal }));
-    return {
-      events,
-      screens,
-      clicks: heat.length,
-      windows: [
-        ...new Set(
-          log
-            .map((entry) => {
-              const key = Object.keys(CONVERSION_WINDOWS).find((name) => entry.includes(name));
-              return key ? CONVERSION_WINDOWS[key] : null;
-            })
-            .filter(Boolean) as string[],
-        ),
-      ].slice(0, 4),
-    };
-  }, [heat, log]);
+  const targetHit = mapping ? emittedEvents.includes(mapping.targetEvent) : false;
+  const guardrailHit = mapping ? emittedEvents.includes(mapping.guardrailEvent) : false;
 
-  const heatRec = useMemo((): HeatLinkedRecommendation | null => {
-    if (!person || (testerBars.screens.length === 0 && testerBars.events.length === 0)) return null;
-    return recommendFromHeatmapSession({
-      workspaceId,
-      screens: testerBars.screens.map(({ name, count }) => ({ name, count })),
-      events: testerBars.events.map((item) => item.name),
-    });
-  }, [person, testerBars, workspaceId]);
-
-  function applyHeatRecommendation(rec: HeatLinkedRecommendation) {
-    setPreview(rec.previewId);
-    setMode("recommended");
-  }
-
-  function renderLivePreview() {
-    if (!person) {
-      return (
-        <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-muted/30 p-8 text-center">
-          <div>
-            <h3 className="text-lg font-semibold">Live interaction</h3>
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Start a tester, then click through Aurelia here. The right panel mirrors this screen with a synthetic + live heatmap.
-            </p>
-          </div>
-          <Button onClick={createTester}>Start Tester Mode</Button>
-        </div>
-      );
-    }
-    const recommended = mode === "recommended" && preview !== "original";
-    const shared = {
-      person,
-      recommended,
-      previewId: preview,
-      workspaceId,
-      viewport,
-      onEvent: (name: string) => setLog((c) => [name, ...c]),
-      onHeatChange,
-      onScreenChange: setCurrentScreen,
-      recordClicks: true as const,
-      heatmapEnabled: false,
-      interactive: true as const,
-    };
-    return workspace.platform === "web" ? <ForgePreview {...shared} /> : <AureliaPreview {...shared} />;
-  }
-
-  function renderHeatmapMirror() {
-    if (!person) {
-      return (
-        <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
-          Heatmap mirror appears after you start a tester — synthetic attention for this screen, plus your live taps.
-        </div>
-      );
-    }
-    const recommended = mode === "recommended" && preview !== "original";
-    const shared = {
-      person,
-      recommended,
-      previewId: preview,
-      workspaceId,
-      viewport,
-      onEvent: (_name: string) => undefined,
-      forceScreen: currentScreen,
-      overlayPoints: mirrorHeatPoints,
-      heatmapEnabled: heatmapEnabled,
-      interactive: false as const,
-      recordClicks: false as const,
-    };
-    return workspace.platform === "web" ? <ForgePreview {...shared} /> : <AureliaPreview {...shared} />;
-  }
+  const previewShared = {
+    person,
+    recommended: mode === "recommended" && preview !== "original",
+    previewId: mode === "original" ? ("original" as PreviewId) : preview,
+    workspaceId,
+    viewport,
+    onEvent: (name: string) => setLog((c) => [name, ...c]),
+    onHeatChange: () => undefined,
+    onScreenChange: setCurrentScreen,
+    recordClicks: true as const,
+    heatmapEnabled: false,
+    interactive: true as const,
+  };
 
   return (
     <div>
       <PageHeader
-        title="Tester Mode"
-        description={`Interactive Aurelia ${workspace.platform === "web" ? "website" : "app"}. Observe engagement heat, conversion windows, and how this session compares to historic tracking.`}
+        title="Experience Studio"
+        description={`Compare original and recommended Aurelia ${workspace.platform === "web" ? "website" : "app"} experiences. Start a tester session when you want events tracked.`}
       />
-      {status && <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{status}</p>}
+      {status && (
+        <p className="mb-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{status}</p>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Button onClick={createTester}>{person ? "New tester" : "Start Tester Mode"}</Button>
-        <Button variant="outline" onClick={identifyTester} disabled={!person}>Identify tester</Button>
-        <Button
-          variant="outline"
-          disabled={!person}
-          onClick={async () => {
-            if (!person) return;
-            await fetch(`/api/tester?workspace=${workspaceId}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "clear", personId: person.id }),
-            });
-            setLog((current) => ["Cleared tester session", ...current]);
-            setHeat([]);
+        <div className="flex rounded-lg border p-1">
+          <Button size="sm" variant={mode === "original" ? "default" : "ghost"} onClick={() => switchMode("original")}>
+            Original
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === "recommended" ? "default" : "ghost"}
+            onClick={() => switchMode("recommended")}
+          >
+            Recommended
+          </Button>
+        </div>
+        <select
+          className="h-9 rounded-md border px-2 text-sm"
+          value={preview}
+          onChange={(e) => {
+            const id = e.target.value as PreviewId;
+            setPreview(id);
+            if (id !== "original") setMode("recommended");
           }}
         >
-          Clear session
-        </Button>
-        <Button variant={mode === "original" ? "default" : "outline"} onClick={() => setMode("original")}>Original</Button>
-        <Button variant={mode === "recommended" ? "default" : "outline"} onClick={() => setMode("recommended")}>Recommended</Button>
-        <select className="h-9 rounded-md border px-2 text-sm" value={preview} onChange={(e) => setPreview(e.target.value as PreviewId)}>
           {allowed.map((id) => (
-            <option key={id} value={id}>{VARIANTS[id].label}</option>
+            <option key={id} value={id}>
+              {VARIANTS[id].label}
+            </option>
           ))}
         </select>
-        <div className="flex items-center gap-2 rounded-md border px-3 py-1.5">
-          <Switch checked={heatmapEnabled} onCheckedChange={setHeatmapEnabled} id="heatmap" />
-          <Label htmlFor="heatmap">Heatmap</Label>
-        </div>
-        {person && <Badge variant="secondary">{hashPii(person.userId || person.anonymousId)}</Badge>}
+        <DeviceFilter workspaceId={workspaceId} value={device} onChange={setDevice} />
+        <Button onClick={createTester}>{person ? "New tester session" : "Start Tester Mode"}</Button>
         {person && (
-          <Link className="text-sm text-primary hover:underline" href={`/users/${person.id}`}>Profile</Link>
+          <>
+            <Badge variant="secondary">{hashPii(person.userId || person.anonymousId)}</Badge>
+            <Link className="text-sm text-primary hover:underline" href={`/users/${person.id}`}>
+              Tester profile
+            </Link>
+            <Link className="text-sm text-primary hover:underline" href="/live">
+              Live Activity
+            </Link>
+          </>
         )}
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ecosystem</span>
-        {(["all", "ios", "android"] as Ecosystem[]).map((id) => (
-          <Button key={id} size="sm" variant={ecosystem === id ? "default" : "outline"} onClick={() => setEcosystem(id)}>
-            {id === "all" ? "All" : id === "ios" ? "iOS" : "Android"}
-          </Button>
-        ))}
-      </div>
+      <div className="grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)_300px]">
+        <Card className="h-fit">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">{variant.label}</CardTitle>
+            <Badge variant="outline">{mode === "original" ? "Original" : "Recommended"}</Badge>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Problem</div>
+              <p className="mt-1">{variant.problem}</p>
+            </section>
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Evidence</div>
+              <p className="mt-1 text-muted-foreground">
+                Linked to {mapping ? labelForEvent(workspaceId, mapping.targetEvent) : variant.targetMetric}. Estimate only —
+                not a causal claim.
+              </p>
+            </section>
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Target segment</div>
+              <p className="mt-1">{variant.segment}</p>
+            </section>
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Hypothesis</div>
+              <p className="mt-1">{variant.hypothesis}</p>
+            </section>
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Primary metric</div>
+              <p className="mt-1">{variant.targetMetric}</p>
+            </section>
+            <section>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Guardrail</div>
+              <p className="mt-1">{variant.guardrail}</p>
+            </section>
+            {mode === "recommended" && variant.whatChanged.length > 0 && (
+              <section className="rounded-md border border-emerald-200 bg-emerald-50/50 p-3">
+                <div className="text-xs font-medium uppercase tracking-wide text-emerald-900">What changed</div>
+                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-emerald-950">
+                  {variant.whatChanged.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </section>
+            )}
+          </CardContent>
+        </Card>
 
-      <div className="mb-4">
-        <DeviceToolbar
-          viewport={viewport}
-          onChange={setViewport}
-          platformLabel={workspace.platform === "web" ? "website" : "app"}
-        />
-      </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base">Interactive preview</CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Step: <span className="font-medium text-foreground">{currentScreen}</span>
+                  {!person && " · Preview visible — start Tester Mode to track events"}
+                </p>
+              </div>
+              {workspace.platform === "web" && (
+                <DeviceToolbar viewport={viewport} onChange={setViewport} platformLabel="website" />
+              )}
+            </div>
+          </CardHeader>
+          <CardContent key={previewKey} className="min-w-0">
+            {workspace.platform === "web" ? (
+              <ForgePreview {...previewShared} />
+            ) : (
+              <AureliaPreview
+                {...previewShared}
+                platformDevice={device === "android" ? "android" : "ios"}
+                viewport="mobile"
+              />
+            )}
+          </CardContent>
+        </Card>
 
-      {heatmapEnabled && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-2">
+        <div className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle>Tester session</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Live analysis</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                Live behaviour from this Tester Mode run ({testerBars.clicks} heatmap clicks).
-              </p>
-              <CompareBars title="Screens tapped" rows={testerBars.screens} empty="Click the product preview to build a heatmap." />
-              <CompareBars title="Events emitted" rows={testerBars.events} empty="Interact to emit events." />
-              {testerBars.windows.length > 0 && (
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-muted-foreground">Conversion windows</div>
-                  <ul className="mt-1 space-y-1">
-                    {testerBars.windows.map((item) => (
-                      <li key={item} className="rounded-md bg-emerald-50 px-2 py-1 text-xs text-emerald-900">{item}</li>
-                    ))}
-                  </ul>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Tester identity</div>
+                <p className="mt-1">{person ? hashPii(person.userId || person.anonymousId) : "Not started"}</p>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Current session</div>
+                <p className="mt-1">{sessionLabel ?? (person ? "Active" : "Preview only")}</p>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Events emitted</div>
+                <ul className="mt-1 max-h-28 space-y-0.5 overflow-auto text-xs">
+                  {emittedEvents.length === 0 ? (
+                    <li className="text-muted-foreground">None yet</li>
+                  ) : (
+                    emittedEvents.slice(0, 12).map((item, i) => <li key={`${item}-${i}`}>{labelForEvent(workspaceId, item)}</li>)
+                  )}
+                </ul>
+              </div>
+              {mapping && person && (
+                <div className="rounded-md bg-muted/50 p-2 text-xs">
+                  <div>
+                    Target ({labelForEvent(workspaceId, mapping.targetEvent)}):{" "}
+                    <strong>{targetHit ? "Occurred" : "Not yet"}</strong>
+                  </div>
+                  <div>
+                    Guardrail ({labelForEvent(workspaceId, mapping.guardrailEvent)}):{" "}
+                    <strong>{guardrailHit ? "Preserved / seen" : "Not yet"}</strong>
+                  </div>
                 </div>
+              )}
+              <div>
+                <div className="text-xs uppercase tracking-wide text-muted-foreground">Expected next</div>
+                <p className="mt-1 text-xs">
+                  {historic?.stepStats.mostCommonNextEvent
+                    ? labelForEvent(workspaceId, historic.stepStats.mostCommonNextEvent)
+                    : "—"}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Historic benchmark</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-xs">
+              <p className="text-muted-foreground">
+                {historic?.baselineLabel ?? "Historic behavior"} · {historic?.totalEvents ?? 0} events
+              </p>
+              {historic?.stepStats && (
+                <>
+                  <p>
+                    Users who reached this step: <strong>{historic.stepStats.usersReachedStep}</strong>
+                  </p>
+                  <p>
+                    Step completion rate: <strong>{formatPercent(historic.stepStats.stepCompletionRate)}</strong>
+                  </p>
+                  <p>
+                    Most common next:{" "}
+                    <strong>
+                      {historic.stepStats.mostCommonNextEvent
+                        ? labelForEvent(workspaceId, historic.stepStats.mostCommonNextEvent)
+                        : "—"}
+                    </strong>
+                  </p>
+                  <p>
+                    Most common abandonment:{" "}
+                    <strong>
+                      {historic.stepStats.mostCommonAbandonEvent
+                        ? labelForEvent(workspaceId, historic.stepStats.mostCommonAbandonEvent)
+                        : "—"}
+                    </strong>
+                  </p>
+                  <p>
+                    Median time to next:{" "}
+                    <strong>
+                      {historic.stepStats.medianTimeToNextMs != null
+                        ? formatDuration(historic.stepStats.medianTimeToNextMs)
+                        : "—"}
+                    </strong>
+                  </p>
+                </>
               )}
             </CardContent>
           </Card>
+
           <Card>
-            <CardHeader>
-              <CardTitle>Historic {historic?.environment ?? (workspace.platform === "web" ? "website" : "app")}</CardTitle>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Event trail</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              <p className="text-muted-foreground">
-                Aggregated non-tester tracking
-                {ecosystem !== "all" ? ` · ${ecosystem === "ios" ? "iOS" : "Android"}` : ""} · {historic?.totalEvents ?? 0} events.
-              </p>
-              <CompareBars title="Top screens / contexts" rows={historic?.topScreens ?? []} empty="No historic rows for this filter." />
-              <CompareBars title="Top events" rows={historic?.topEvents ?? []} empty="No historic events for this filter." />
+            <CardContent>
+              <ul className="max-h-40 space-y-1 overflow-auto text-xs">
+                {log.length === 0 ? (
+                  <li className="text-muted-foreground">Interact with the preview to build a trail.</li>
+                ) : (
+                  log.map((item, index) => <li key={index}>{item}</li>)
+                )}
+              </ul>
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {heatRec && (
-        <Card className="mb-4 border-emerald-200 bg-gradient-to-br from-emerald-50/80 to-background">
-          <CardHeader className="pb-2">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle>Recommendation from this heatmap</CardTitle>
-              <Badge>{heatRec.confidence} · linked to events</Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="grid gap-4 lg:grid-cols-[1.2fr_1fr_auto]">
-            <div className="space-y-2 text-sm">
-              <div className="font-medium">{heatRec.title}</div>
-              <p>{heatRec.why}</p>
-              <p className="font-medium text-emerald-900">{heatRec.action}</p>
-            </div>
-            <div className="space-y-2 text-xs">
-              <div>
-                <div className="uppercase tracking-wide text-muted-foreground">Hotspot screens</div>
-                <p className="mt-1">{heatRec.hotspotScreens.join(" · ") || "—"}</p>
-              </div>
-              <div>
-                <div className="uppercase tracking-wide text-muted-foreground">Trigger events</div>
-                <p className="mt-1">{heatRec.triggerEvents.map((e) => e.replace(/_/g, " ")).join(" · ") || "ui clicks"}</p>
-              </div>
-              <div>
-                <div className="uppercase tracking-wide text-muted-foreground">Next events to drive</div>
-                <p className="mt-1">{heatRec.nextEvents.map((e) => e.replace(/_/g, " ")).join(" → ")}</p>
-              </div>
-            </div>
-            <div className="flex flex-col gap-2">
-              <Button onClick={() => applyHeatRecommendation(heatRec)}>Apply in preview</Button>
-              <Button asChild variant="outline">
-                <Link href={person ? `/recommendations?personId=${person.id}` : "/recommendations"}>
-                  Open recommendations
-                </Link>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="mb-4 grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Live interaction</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Click through Aurelia here · screen: <span className="font-medium text-foreground">{currentScreen}</span>
-            </p>
-          </CardHeader>
-          <CardContent className="min-w-0">{renderLivePreview()}</CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle>Heatmap view</CardTitle>
-            <p className="text-xs text-muted-foreground">
-              Same page with synthetic historic attention{heat.filter((p) => p.screen === currentScreen).length ? " + your live taps" : ""}
-            </p>
-          </CardHeader>
-          <CardContent className="min-w-0">{renderHeatmapMirror()}</CardContent>
-        </Card>
       </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Variant under test</CardTitle></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <div className="font-medium">{variant.label}</div>
-            <p className="text-muted-foreground">{variant.hypothesis}</p>
-            <p>Target: {variant.targetMetric}</p>
-            <p>Guardrail: {variant.guardrail}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Event trail</CardTitle></CardHeader>
-          <CardContent>
-            <ul className="max-h-56 space-y-1 overflow-auto text-xs">
-              {log.length === 0 ? (
-                <li className="text-muted-foreground">None yet — interact with Aurelia on the left.</li>
-              ) : (
-                log.map((item, index) => <li key={index}>{item}</li>)
-              )}
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
-function CompareBars({
-  title,
-  rows,
-  empty,
-}: {
-  title: string;
-  rows: Array<{ name: string; count: number; share: number }>;
-  empty: string;
-}) {
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wide text-muted-foreground">{title}</div>
-      {rows.length === 0 ? (
-        <p className="mt-1 text-xs text-muted-foreground">{empty}</p>
-      ) : (
-        <ul className="mt-2 space-y-2">
-          {rows.map((row) => (
-            <li key={row.name}>
-              <div className="mb-0.5 flex justify-between text-xs">
-                <span className="truncate">{row.name.replace(/_/g, " ")}</span>
-                <span className="text-muted-foreground">{formatPercent(row.share)} · {row.count}</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-rose-500/80" style={{ width: `${Math.max(4, row.share * 100)}%` }} />
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
     </div>
   );
 }

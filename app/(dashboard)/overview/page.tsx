@@ -7,8 +7,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip } from "@/components/ui/tooltip";
+import { DeviceFilter } from "@/components/device-filter";
 import { useApi } from "@/hooks/use-api";
-import { formatNumber, formatPercent } from "@/lib/utils";
+import { formatNumber, formatPercent, formatPeriodChange } from "@/lib/utils";
 import { useWorkspace } from "@/components/workspace-provider";
 import { RetentionPanel } from "@/components/retention-panel";
 import { productRecommendations } from "@/lib/recommendations/engine";
@@ -29,33 +30,68 @@ import {
 
 type Overview = {
   activeUsers: number;
-  activeUsersChange: number;
+  activeUsersChange: number | null;
+  activeUsersChangeUnavailable?: string | null;
+  activeUsersPrior?: number;
   newUsers: number;
-  newUsersChange: number;
+  newUsersChange: number | null;
+  newUsersChangeUnavailable?: string | null;
+  newUsersPrior?: number;
   sessions: number;
-  sessionsChange: number;
+  sessionsChange: number | null;
+  sessionsChangeUnavailable?: string | null;
+  sessionsPrior?: number;
   activationRate: number;
-  activationRateChange: number;
+  activationRateChange: number | null;
+  activationRateChangeUnavailable?: string | null;
+  activationRatePrior?: number;
   conversionRate: number;
-  conversionRateChange: number;
+  conversionRateChange: number | null;
+  conversionRateChangeUnavailable?: string | null;
+  conversionRatePrior?: number;
   retentionRate: number;
+  retentionRateChange: number | null;
+  retentionRateChangeUnavailable?: string | null;
+  retentionRatePrior?: number;
   eventsOverTime: Array<{ date: string; count: number }>;
-  eventsOverTimeByName?: Array<{ date: string; [eventName: string]: string | number }>;
   channels: Array<{ name: string; count: number }>;
   features: Array<{ name: string; count: number }>;
+  primaryGoalDescription?: string;
+  secondaryGoalDescription?: string;
+  retentionEventDescription?: string;
 };
+
+const DEMO_TO = "2026-08-18T23:59:59.000Z";
+
+function rangeForPreset(preset: string): { from: string; to: string } {
+  const to = new Date(DEMO_TO);
+  const from = new Date(DEMO_TO);
+  if (preset === "7") from.setUTCDate(from.getUTCDate() - 6);
+  else if (preset === "14") from.setUTCDate(from.getUTCDate() - 13);
+  else from.setUTCDate(from.getUTCDate() - 29);
+  from.setUTCHours(0, 0, 0, 0);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
 
 function Kpi({
   label,
   value,
   change,
+  unavailable,
+  prior,
+  kind,
   hint,
 }: {
   label: string;
   value: string;
-  change: number;
+  change: number | null | undefined;
+  unavailable?: string | null;
+  prior?: number;
+  kind: "count" | "rate";
   hint: string;
 }) {
+  const changeLabel = formatPeriodChange(change, kind, unavailable);
+  const up = (change ?? 0) >= 0 && !unavailable;
   return (
     <Card>
       <CardHeader>
@@ -65,9 +101,19 @@ function Kpi({
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-semibold">{value}</div>
-        <div className={change >= 0 ? "text-xs text-emerald-700" : "text-xs text-rose-700"}>
-          {change >= 0 ? "▲" : "▼"} {formatPercent(Math.abs(change))} vs prior period
-        </div>
+        <Tooltip
+          content={
+            prior === undefined || change === null || change === undefined
+              ? changeLabel
+              : `Current ${value} · Prior ${kind === "rate" ? formatPercent(prior) : formatNumber(prior)}`
+          }
+        >
+          <div className={`cursor-help text-xs ${unavailable ? "text-muted-foreground" : up ? "text-emerald-700" : "text-rose-700"}`}>
+            {!unavailable && (up ? "▲ " : "▼ ")}
+            {changeLabel}
+            {!unavailable ? " vs prior period" : ""}
+          </div>
+        </Tooltip>
       </CardContent>
     </Card>
   );
@@ -79,19 +125,25 @@ export default function OverviewPage() {
   const { workspace, workspaceId } = useWorkspace();
   const [segment, setSegment] = useState("");
   const [channel, setChannel] = useState("");
-  const [ecosystem, setEcosystem] = useState("");
+  const [device, setDevice] = useState("");
+  const [preset, setPreset] = useState("30");
   const [compareEvents, setCompareEvents] = useState<string[]>([]);
+  const range = useMemo(() => rangeForPreset(preset), [preset]);
   const qs = [
+    `from=${encodeURIComponent(range.from)}`,
+    `to=${encodeURIComponent(range.to)}`,
     segment && `segment=${segment}`,
     channel && `channel=${channel}`,
-    ecosystem && `ecosystem=${ecosystem}`,
+    device && `device=${device}`,
   ]
     .filter(Boolean)
     .join("&");
-  const { data, loading, error } = useApi<Overview>(`/api/analytics/overview${qs ? `?${qs}` : ""}`, qs);
+  const { data, loading, error } = useApi<Overview>(`/api/analytics/overview?${qs}`, qs);
 
   const topEventNames = useMemo(() => (data?.features ?? []).slice(0, 6).map((f) => f.name), [data]);
-  const tldr = useMemo(() => productRecommendations(workspaceId).slice(0, 3), [workspaceId]);
+  const recommendations = useMemo(() => productRecommendations(workspaceId), [workspaceId]);
+  const hero = recommendations[0];
+  const rest = recommendations.slice(1);
 
   function toggleCompare(name: string) {
     setCompareEvents((current) =>
@@ -99,56 +151,49 @@ export default function OverviewPage() {
     );
   }
 
-  if (loading) return <p className="text-sm text-muted-foreground">Loading metrics from stored events…</p>;
+  if (loading && !data) {
+    return (
+      <div>
+        <PageHeader title="Overview" description={workspace.productDescription} />
+        <div className="mb-6 h-36 animate-pulse rounded-xl border bg-muted/40" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-28 animate-pulse rounded-xl border bg-muted/40" />
+          ))}
+        </div>
+        <div className="mt-6 h-72 animate-pulse rounded-xl border bg-muted/40" />
+      </div>
+    );
+  }
+
   if (error || !data) {
     return (
       <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
         <p className="font-medium">Could not load overview.</p>
-        <p className="mt-1 text-rose-700">{error ?? "No data returned from /api/analytics/overview."}</p>
+        <p className="mt-1">{error ?? "No data returned."}</p>
+        <Button className="mt-3" variant="outline" onClick={() => window.location.reload()}>
+          Retry
+        </Button>
       </div>
     );
   }
 
   return (
     <div>
-      <PageHeader
-        title="Overview"
-        description={workspace.productDescription}
-      />
-
-      <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 via-background to-background">
-        <CardHeader className="pb-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <CardTitle>TLDR summary</CardTitle>
-            <Badge variant="secondary">
-              Activation {formatPercent(data.activationRate)} · Conversion {formatPercent(data.conversionRate)} · D1{" "}
-              {formatPercent(data.retentionRate)}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="grid gap-3 lg:grid-cols-3">
-          {tldr.map((item) => (
-            <div key={item.id} className="rounded-xl border border-border bg-card p-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Impact</div>
-                <Badge>{item.confidence}</Badge>
-              </div>
-              <p className="mt-2 text-sm leading-5">{item.impact}</p>
-              <div className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Recommended action</div>
-              <p className="mt-1 text-sm font-medium leading-5">{item.change}</p>
-              <div className="mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground">Expected impact</div>
-              <p className="mt-1 text-sm text-emerald-800">{item.expectedImpact}</p>
-              <Button asChild size="sm" variant="outline" className="mt-4 w-full">
-                <Link href={`/studio?preview=${item.previewId}`}>Preview in Tester Mode</Link>
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <PageHeader title="Overview" description={workspace.productDescription} />
 
       <div className="mb-4 flex flex-wrap gap-3 text-sm">
         <label>
-          Persona / segment
+          Date range
+          <select className="ml-2 h-9 rounded-md border px-2" value={preset} onChange={(e) => setPreset(e.target.value)}>
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+          </select>
+        </label>
+        <DeviceFilter workspaceId={workspaceId} value={device} onChange={setDevice} />
+        <label>
+          Persona
           <select className="ml-2 h-9 rounded-md border px-2" value={segment} onChange={(e) => setSegment(e.target.value)}>
             <option value="">All personas</option>
             {workspace.segments.map((item) => (
@@ -169,49 +214,102 @@ export default function OverviewPage() {
             ))}
           </select>
         </label>
-        <label>
-          Ecosystem
-          <select className="ml-2 h-9 rounded-md border px-2" value={ecosystem} onChange={(e) => setEcosystem(e.target.value)}>
-            <option value="">All</option>
-            <option value="ios">iOS</option>
-            <option value="android">Android</option>
-          </select>
-        </label>
       </div>
-      {segment && (
-        <p className="mb-4 text-sm text-muted-foreground">
-          {workspace.segments.find((s) => s.id === segment)?.description}
-        </p>
+
+      {hero && (
+        <Card className="mb-6 border-primary/25 bg-gradient-to-br from-primary/5 via-background to-background">
+          <CardHeader className="pb-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle>Trailwise insight</CardTitle>
+              <Badge>
+                {hero.confidence === "high" ? "High confidence" : hero.confidence === "medium" ? "Medium confidence" : "Exploratory"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="grid gap-4 lg:grid-cols-[1.4fr_auto]">
+            <div className="space-y-2 text-sm">
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Problem</div>
+              <p className="font-medium">{hero.impact}</p>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Evidence</div>
+              <p>{hero.evidence}</p>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Recommended action</div>
+              <p>{hero.change}</p>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground">Expected impact (estimate)</div>
+              <p className="text-emerald-800">{hero.expectedImpact}</p>
+            </div>
+            <div className="flex flex-col justify-end gap-2">
+              <Button asChild>
+                <Link href={`/studio?preview=${hero.previewId}`}>Preview change</Link>
+              </Button>
+              <p className="text-xs text-muted-foreground">Segment: {hero.segment}</p>
+            </div>
+          </CardContent>
+        </Card>
       )}
-      <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-        {workspace.segments.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setSegment(segment === item.id ? "" : item.id)}
-            className={`rounded-lg border p-3 text-left text-sm ${segment === item.id ? "border-primary bg-primary/5" : "border-border"}`}
-          >
-            <div className="font-medium">{item.name}</div>
-            <div className="mt-1 text-xs text-muted-foreground">{item.description}</div>
-          </button>
-        ))}
-      </div>
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Kpi label="Active users" value={formatNumber(data.activeUsers)} change={data.activeUsersChange} hint="People with at least one event in the selected window." />
-        <Kpi label="New users" value={formatNumber(data.newUsers)} change={data.newUsersChange} hint="Profiles whose firstSeen falls inside the window." />
-        <Kpi label="Sessions" value={formatNumber(data.sessions)} change={data.sessionsChange} hint="Sessions expire after 30 minutes of inactivity." />
-        <Kpi label="Activation rate" value={formatPercent(data.activationRate)} change={data.activationRateChange} hint={workspace.primaryGoal.description} />
-        <Kpi label="Conversion rate" value={formatPercent(data.conversionRate)} change={data.conversionRateChange} hint={workspace.secondaryGoal.description} />
-        <Kpi label="Day-1 retention" value={formatPercent(data.retentionRate)} change={0} hint="Share of new users with activity on the calendar day after first seen (UTC)." />
+        <Kpi
+          label="Active users"
+          value={formatNumber(data.activeUsers)}
+          change={data.activeUsersChange}
+          unavailable={data.activeUsersChangeUnavailable}
+          prior={data.activeUsersPrior}
+          kind="count"
+          hint="Users with at least one event in the selected window."
+        />
+        <Kpi
+          label="New users"
+          value={formatNumber(data.newUsers)}
+          change={data.newUsersChange}
+          unavailable={data.newUsersChangeUnavailable}
+          prior={data.newUsersPrior}
+          kind="count"
+          hint="Profiles whose firstSeen falls inside the window."
+        />
+        <Kpi
+          label="Sessions"
+          value={formatNumber(data.sessions)}
+          change={data.sessionsChange}
+          unavailable={data.sessionsChangeUnavailable}
+          prior={data.sessionsPrior}
+          kind="count"
+          hint="Sessions expire after 30 minutes of inactivity."
+        />
+        <Kpi
+          label="Activation rate"
+          value={formatPercent(data.activationRate)}
+          change={data.activationRateChange}
+          unavailable={data.activationRateChangeUnavailable}
+          prior={data.activationRatePrior}
+          kind="rate"
+          hint={data.primaryGoalDescription ?? workspace.primaryGoal.description}
+        />
+        <Kpi
+          label="Conversion rate"
+          value={formatPercent(data.conversionRate)}
+          change={data.conversionRateChange}
+          unavailable={data.conversionRateChangeUnavailable}
+          prior={data.conversionRatePrior}
+          kind="rate"
+          hint={data.secondaryGoalDescription ?? workspace.secondaryGoal.description}
+        />
+        <Kpi
+          label="Day-1 retention"
+          value={formatPercent(data.retentionRate)}
+          change={data.retentionRateChange}
+          unavailable={data.retentionRateChangeUnavailable}
+          prior={data.retentionRatePrior}
+          kind="rate"
+          hint={data.retentionEventDescription ?? workspace.retentionEvent.description}
+        />
       </div>
+
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>All events over time</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Total event volume across every event name. Use compare chips below to overlay specific events.
-            </p>
             <div className="mb-3 flex flex-wrap gap-2">
               {topEventNames.map((name) => (
                 <button
@@ -265,25 +363,37 @@ export default function OverviewPage() {
           </CardContent>
         </Card>
       </div>
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>Top events (all tracked)</CardTitle>
-        </CardHeader>
-        <CardContent className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-          {data.features.map((item) => (
-            <div key={item.name} className="rounded-lg border border-border px-3 py-2">
-              <div className="text-xs text-muted-foreground">{item.name.replace(/_/g, " ")}</div>
-              <div className="text-lg font-semibold">{formatNumber(item.count)}</div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-      <RetentionPanel />
+
+      {rest.length > 0 && (
+        <Card className="mt-4">
+          <CardHeader>
+            <CardTitle>More recommendations</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {rest.map((item, index) => (
+              <div key={item.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm">
+                <div>
+                  <div className="font-medium">
+                    #{index + 2} {item.title}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{item.impact}</p>
+                </div>
+                <Button asChild size="sm" variant="outline">
+                  <Link href={`/studio?preview=${item.previewId}`}>Preview change</Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="mt-4">
+        <RetentionPanel />
+      </div>
     </div>
   );
 }
 
-/** Demo compare series: distribute daily totals across selected events by their overall share. */
 function buildCompareSeries(
   daily: Array<{ date: string; count: number }>,
   features: Array<{ name: string; count: number }>,

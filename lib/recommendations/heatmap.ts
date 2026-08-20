@@ -41,37 +41,37 @@ const WEB_RULES: Array<{
   {
     id: "web-error-recovery",
     previewId: "error-recovery",
-    screens: ["wearable", "integration", "onboarding"],
-    requireAny: ["integration_error"],
+    screens: ["wearable", "onboarding"],
+    requireAny: ["wearable_connection_error"],
     title: "Recover from wearable friction",
     action: "Switch to the error-recovery experience: retry + demo data instead of a dead end.",
     why: (hottest) =>
-      `Heat concentrated on “${hottest}” and an integration_error fired — users are engaging the connect step but failing.`,
-    nextEvents: ["integration_connected", "project_created"],
+      `Heat concentrated on “${hottest}” and a wearable_connection_error fired — users are engaging the connect step but failing.`,
+    nextEvents: ["wearable_connected", "practice_plan_created"],
   },
   {
-    id: "web-invite-prompt",
-    previewId: "invite-prompt",
-    screens: ["plan", "project", "invite"],
-    requireAny: ["project_created"],
-    requireNone: ["teammate_invited"],
+    id: "web-friend-invite",
+    previewId: "friend-invite-prompt",
+    screens: ["plan", "invite"],
+    requireAny: ["practice_plan_created"],
+    requireNone: ["friend_invited"],
     title: "Close activation with a friend invite",
     action: "Surface the invite prompt right after plan creation — the primary conversion window.",
     why: (hottest) =>
-      `Heat on “${hottest}” after project_created without teammate_invited — attention is here but activation is incomplete.`,
-    nextEvents: ["teammate_invited"],
+      `Heat on “${hottest}” after practice_plan_created without friend_invited — attention is here but activation is incomplete.`,
+    nextEvents: ["friend_invited"],
   },
   {
-    id: "web-earlier-integration",
-    previewId: "earlier-integration",
-    screens: ["onboarding", "plan", "project", "landing"],
+    id: "web-earlier-wearable",
+    previewId: "earlier-wearable-help",
+    screens: ["onboarding", "wearable", "plan", "landing"],
     requireAny: ["account_created", "onboarding_started"],
-    requireNone: ["integration_connected"],
+    requireNone: ["wearable_connected"],
     title: "Move wearable help earlier",
     action: "Prompt wearable connect before the empty practice plan.",
     why: (hottest) =>
       `Users are engaging “${hottest}” after account create without connecting a wearable — classic empty-plan stall.`,
-    nextEvents: ["integration_connected", "project_created"],
+    nextEvents: ["wearable_connected", "practice_plan_created"],
   },
   {
     id: "web-simplified-signup",
@@ -203,8 +203,27 @@ export function withHeatmapLinkage(recs: ProductRecommendation[], workspaceId: W
       hotspotScreens: rule?.screens ?? [],
       relatedEvents: rule?.nextEvents ?? [],
       heatmapHint: rule
-        ? `In Tester Mode, heat on ${rule.screens.join(" / ")} plus ${rule.requireAny?.join(" / ") ?? "drop-off events"} surfaces this recommendation.`
-        : "Open Tester Mode with heatmap on to validate this recommendation against engagement density.",
+        ? humanHeatHint(rule.screens, rule.requireAny, rule.nextEvents)
+        : "Open Experience Studio to validate this recommendation against engagement density.",
     };
   });
+}
+
+function humanHeatHint(screens: string[], requireAny: string[] | undefined, nextEvents: string[]) {
+  const screenPhrase = screens.join(", ");
+  if (screens.includes("wearable") || screens.includes("onboarding") || screens.includes("plan")) {
+    return `New users repeatedly interact with wearable setup on ${screenPhrase}, then abandon when they encounter friction before activation completes.`;
+  }
+  if (screens.includes("pricing") || screens.includes("signup")) {
+    return `Visitors loop on pricing and signup without converting — attention clusters on ${screenPhrase}.`;
+  }
+  if (screens.includes("paywall") || screens.includes("session")) {
+    return `App users show dense interaction on ${screenPhrase} around first value and paywall timing.`;
+  }
+  if (screens.includes("permissions") || screens.includes("reminder")) {
+    return `Users who deny notifications stall without an in-app reminder path (${screenPhrase}).`;
+  }
+  const triggers = (requireAny ?? []).map((e) => e.replace(/_/g, " ")).join(", ");
+  const next = nextEvents.map((e) => e.replace(/_/g, " ")).join(" → ");
+  return `Behavioral density on ${screenPhrase}${triggers ? ` after ${triggers}` : ""} points to driving ${next || "the next activation step"}.`;
 }

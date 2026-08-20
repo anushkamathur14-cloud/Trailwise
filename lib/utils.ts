@@ -21,6 +21,27 @@ export function formatLift(value: number): string {
   return `${sign}${pct.toFixed(0)}%`;
 }
 
+/** Percentage-point difference display, e.g. +40.6 pp */
+export function formatPp(value: number | null | undefined, digits = 1): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  const pp = value * 100;
+  const sign = pp > 0 ? "+" : "";
+  return `${sign}${pp.toFixed(digits)} pp`;
+}
+
+/** Count change as percent; rates as pp. Null → unavailable label. */
+export function formatPeriodChange(
+  value: number | null | undefined,
+  kind: "count" | "rate",
+  unavailable?: string | null,
+): string {
+  if (unavailable || value === null || value === undefined) return unavailable ?? "No prior-period data";
+  if (kind === "rate") return formatPp(value);
+  const pct = value * 100;
+  const sign = pct > 0 ? "+" : "";
+  return `${sign}${pct.toFixed(1)}%`;
+}
+
 export function formatDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return "—";
   if (ms < 1000) return `${Math.round(ms)}ms`;

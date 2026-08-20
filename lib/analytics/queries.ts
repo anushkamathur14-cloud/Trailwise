@@ -20,14 +20,14 @@ export function previousRange(range: DateRange): DateRange {
 }
 
 function personWhere(workspaceId: string, range: DateRange, filters: SegmentFilter): Prisma.PersonWhereInput {
-  const devices =
-    filters.device === "ios"
-      ? ["ios", "iphone", "mobile-web"]
-      : filters.device === "android"
-        ? ["android"]
-        : filters.device
-          ? [filters.device]
-          : undefined;
+  let devices: string[] | undefined;
+  if (filters.device === "ios") devices = ["ios", "iphone"];
+  else if (filters.device === "android") devices = ["android"];
+  else if (filters.device === "mobile-web") devices = ["mobile-web"];
+  else if (filters.device === "desktop") devices = ["desktop"];
+  else if (filters.device === "tablet") devices = ["tablet"];
+  else if (filters.device) devices = [filters.device];
+
   return {
     workspaceId,
     lastSeenAt: { gte: range.from, lte: range.to },
@@ -36,6 +36,28 @@ function personWhere(workspaceId: string, range: DateRange, filters: SegmentFilt
     ...(filters.segment ? { segment: filters.segment } : {}),
     ...(filters.country ? { country: filters.country } : {}),
   };
+}
+
+/** Count metrics: relative % change. Rates: percentage-point change. Null prior → unavailable. */
+export function periodChange(
+  now: number,
+  before: number,
+  kind: "count" | "rate",
+): { value: number | null; unavailableReason: string | null } {
+  if (kind === "count" && before === 0) {
+    return { value: null, unavailableReason: now > 0 ? "No prior-period data" : "No data" };
+  }
+  if (kind === "rate" && before === 0 && now === 0) {
+    return { value: null, unavailableReason: "No prior-period data" };
+  }
+  if (kind === "count") return { value: (now - before) / before, unavailableReason: null };
+  return { value: now - before, unavailableReason: null };
+}
+
+function dayOffset(first: Date, activity: Date): number {
+  const a = Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), first.getUTCDate());
+  const b = Date.UTC(activity.getUTCFullYear(), activity.getUTCMonth(), activity.getUTCDate());
+  return Math.round((b - a) / 86_400_000);
 }
 
 export async function overviewMetrics(
@@ -90,27 +112,68 @@ export async function overviewMetrics(
     activity,
   );
 
-  const change = (now: number, before: number) => (before === 0 ? (now > 0 ? 1 : 0) : (now - before) / before);
+  const changeCount = (now: number, before: number) => periodChange(now, before, "count");
+  const changeRate = (now: number, before: number) => periodChange(now, before, "rate");
+
+  const activeCh = changeCount(people.length, prevPeople.length);
+  const newCh = changeCount(newUsers, prevNew);
+  const sessCh = changeCount(sessions, prevSessions);
+  const actCh = changeRate(activationRate, prevActivation);
+  const convCh = changeRate(conversionRate, prevConversion);
+
+  // Prior retention for D1 comparison
+  const prevActivity = await db.event.findMany({
+    where: { workspaceId, timestamp: { gte: prev.from, lte: prev.to } },
+    select: { personId: true, timestamp: true },
+  });
+  const prevRetentionPeople = await db.person.findMany({
+    where: {
+      workspaceId,
+      firstSeenAt: { gte: prev.from, lte: prev.to },
+      ...("segment" in filters && filters.segment ? { segment: filters.segment } : {}),
+    },
+    select: { id: true, firstSeenAt: true },
+  });
+  const prevRetention = calculateRetention(
+    prevRetentionPeople.map((person) => ({ personId: person.id, firstSeenAt: person.firstSeenAt })),
+    prevActivity,
+  );
+  const retCh = changeRate(retention.day1, prevRetention.day1);
 
   return {
     activeUsers: people.length,
-    activeUsersChange: change(people.length, prevPeople.length),
+    activeUsersChange: activeCh.value,
+    activeUsersChangeUnavailable: activeCh.unavailableReason,
+    activeUsersPrior: prevPeople.length,
     newUsers,
-    newUsersChange: change(newUsers, prevNew),
+    newUsersChange: newCh.value,
+    newUsersChangeUnavailable: newCh.unavailableReason,
+    newUsersPrior: prevNew,
     sessions,
-    sessionsChange: change(sessions, prevSessions),
+    sessionsChange: sessCh.value,
+    sessionsChangeUnavailable: sessCh.unavailableReason,
+    sessionsPrior: prevSessions,
     activationRate,
-    activationRateChange: change(activationRate, prevActivation),
+    activationRateChange: actCh.value,
+    activationRateChangeUnavailable: actCh.unavailableReason,
+    activationRatePrior: prevActivation,
     conversionRate,
-    conversionRateChange: change(conversionRate, prevConversion),
+    conversionRateChange: convCh.value,
+    conversionRateChangeUnavailable: convCh.unavailableReason,
+    conversionRatePrior: prevConversion,
     retentionRate: retention.day1,
-    retentionRateChange: 0,
+    retentionRateChange: retCh.value,
+    retentionRateChangeUnavailable: retCh.unavailableReason,
+    retentionRatePrior: prevRetention.day1,
     eventsOverTime: [...byDay.entries()]
       .sort(([a], [b]) => a.localeCompare(b))
       .map(([date, count]) => ({ date, count })),
     channels: [...channels.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
     features: [...features.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count).slice(0, 8),
     retention,
+    primaryGoalDescription: getWorkspace(workspaceId).primaryGoal.description,
+    secondaryGoalDescription: getWorkspace(workspaceId).secondaryGoal.description,
+    retentionEventDescription: getWorkspace(workspaceId).retentionEvent.description,
   };
 }
 
@@ -169,20 +232,31 @@ export async function journeyQuery(
   return buildJourneyGraph(events, { start, end, maxSteps });
 }
 
-export async function signalQuery(db: PrismaClient, workspaceId: WorkspaceId, range: DateRange) {
+export async function signalQuery(
+  db: PrismaClient,
+  workspaceId: WorkspaceId,
+  range: DateRange,
+  goal: "activation" | "conversion" | "retention" = "activation",
+) {
   const people = await db.person.findMany({
     where: { workspaceId, lastSeenAt: { gte: range.from, lte: range.to } },
     include: { events: { select: { eventName: true, timestamp: true } } },
   });
-  const defs = signalsFor(workspaceId);
+  const defs = signalsFor(workspaceId, goal);
   return defs.map((def) => {
     const rows = people.map((person) => {
       const names = person.events.map((e) => e.eventName);
       const times = person.events.map((e) => e.timestamp);
+      let converted = false;
+      if (goal === "activation") converted = person.activated;
+      else if (goal === "conversion") converted = person.converted;
+      else {
+        converted = person.events.some((event) => dayOffset(person.firstSeenAt, event.timestamp) >= 1);
+      }
       return {
         personId: person.id,
         hasSignal: def.hasSignal(names, times),
-        converted: person.activated,
+        converted,
         segment: person.segment,
       };
     });
@@ -191,7 +265,8 @@ export async function signalQuery(db: PrismaClient, workspaceId: WorkspaceId, ra
       id: def.id,
       name: def.name,
       description: def.description,
-      interpretation: def.interpretation(stats.lift, stats.polarity),
+      interpretation: def.interpretation(stats.absoluteDifference, stats.polarity),
+      goal,
       stats,
     };
   });

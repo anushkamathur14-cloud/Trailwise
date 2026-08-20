@@ -1,6 +1,7 @@
 export const WORKSPACE_IDS = ["web-demo", "mobile-demo"] as const;
 export type WorkspaceId = (typeof WORKSPACE_IDS)[number];
 
+/** Aurelia Web — marketing site + account experience event keys */
 export const WEB_EVENTS = {
   landingViewed: "landing_viewed",
   pricingViewed: "pricing_viewed",
@@ -9,16 +10,18 @@ export const WEB_EVENTS = {
   accountCreated: "account_created",
   onboardingStarted: "onboarding_started",
   onboardingAbandoned: "onboarding_abandoned",
-  integrationConnected: "integration_connected",
-  integrationError: "integration_error",
-  projectCreated: "project_created",
-  projectAbandoned: "project_abandoned",
-  teammateInvited: "teammate_invited",
+  wearableConnectionStarted: "wearable_connection_started",
+  wearableConnected: "wearable_connected",
+  wearableConnectionError: "wearable_connection_error",
+  practicePlanCreated: "practice_plan_created",
+  practicePlanAbandoned: "practice_plan_abandoned",
+  friendInvited: "friend_invited",
   upgradeViewed: "upgrade_viewed",
   subscriptionStarted: "subscription_started",
   identityMerged: "identity_merged",
 } as const;
 
+/** Aurelia App — mobile journey event keys (distinct from web) */
 export const MOBILE_EVENTS = {
   appOpened: "app_opened",
   onboardingViewed: "onboarding_viewed",
@@ -45,7 +48,6 @@ export const MOBILE_EVENTS = {
 export type FunnelStep = {
   eventName: string;
   label: string;
-  /** Coarse conversion value for SKAN / monetization scoring (0–63). */
   conversionValue: number;
 };
 
@@ -62,6 +64,8 @@ export type WorkspaceConfig = {
   productTagline: string;
   productDescription: string;
   platform: "web" | "mobile";
+  /** Retention event shown in tooltips */
+  retentionEvent: { name: string; description: string };
   primaryGoal: {
     id: string;
     name: string;
@@ -83,6 +87,7 @@ export type WorkspaceConfig = {
   }>;
   defaultJourney: { start: string; end: string };
   acquisitionChannels: string[];
+  /** Web: desktop/tablet/mobile-web · App: ios/android */
   devices: string[];
   countries: string[];
   segments: SegmentDefinition[];
@@ -96,16 +101,20 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     productTagline: "A calmer daily wellness practice — on the web",
     productDescription: "Aurelia wellness — web site, practice plans, friend invites, and Aurelia+.",
     platform: "web",
+    retentionEvent: {
+      name: "Any return visit after first seen",
+      description: "Any subsequent web session after the user’s firstSeen day counts toward retention.",
+    },
     primaryGoal: {
       id: "activation",
       name: "Activation",
-      description: "Created a first practice plan and invited a friend",
-      requiredEvents: [WEB_EVENTS.projectCreated, WEB_EVENTS.teammateInvited],
+      description: "A user creates their first practice plan and invites a friend within the activation window.",
+      requiredEvents: [WEB_EVENTS.practicePlanCreated, WEB_EVENTS.friendInvited],
     },
     secondaryGoal: {
       id: "paid",
       name: "Paid subscription",
-      description: "Started Aurelia+ on the web",
+      description: "A user starts an Aurelia+ subscription.",
       requiredEvents: [WEB_EVENTS.subscriptionStarted],
     },
     funnels: [
@@ -113,7 +122,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
         id: "marketing",
         name: "Marketing funnel",
         kind: "marketing",
-        description: "Acquisition path from landing through account creation",
+        description: "Acquisition from landing through account creation",
         steps: [
           { eventName: WEB_EVENTS.landingViewed, label: "Landing viewed", conversionValue: 0 },
           { eventName: WEB_EVENTS.pricingViewed, label: "Pricing viewed", conversionValue: 1 },
@@ -128,24 +137,24 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
         description: "From account to Aurelia+, with SKAN-style conversion values",
         steps: [
           { eventName: WEB_EVENTS.accountCreated, label: "Account created", conversionValue: 3 },
-          { eventName: WEB_EVENTS.integrationConnected, label: "Wearable connected", conversionValue: 8 },
-          { eventName: WEB_EVENTS.projectCreated, label: "Practice plan created", conversionValue: 16 },
-          { eventName: WEB_EVENTS.teammateInvited, label: "Friend invited", conversionValue: 32 },
+          { eventName: WEB_EVENTS.wearableConnected, label: "Wearable connected", conversionValue: 8 },
+          { eventName: WEB_EVENTS.practicePlanCreated, label: "Practice plan created", conversionValue: 16 },
+          { eventName: WEB_EVENTS.friendInvited, label: "Friend invited", conversionValue: 32 },
           { eventName: WEB_EVENTS.upgradeViewed, label: "Aurelia+ viewed", conversionValue: 40 },
           { eventName: WEB_EVENTS.subscriptionStarted, label: "Subscription started", conversionValue: 63 },
         ],
       },
     ],
-    defaultJourney: { start: WEB_EVENTS.landingViewed, end: WEB_EVENTS.teammateInvited },
+    defaultJourney: { start: WEB_EVENTS.landingViewed, end: WEB_EVENTS.friendInvited },
     acquisitionChannels: ["google", "instagram", "direct", "referral", "newsletter"],
-    devices: ["desktop", "ios", "android"],
+    devices: ["desktop", "tablet", "mobile-web"],
     countries: ["US", "GB", "DE", "IN", "CA", "AU"],
     segments: [
       { id: "high-intent", name: "High intent", description: "Connects a wearable early and often activates." },
-      { id: "error-prone", name: "Error-prone", description: "Hits connection errors; higher onboarding abandon." },
+      { id: "error-prone", name: "Error-prone", description: "Hits wearable connection errors; higher onboarding abandon." },
       { id: "window-shopper", name: "Window shopper", description: "Repeats pricing views without signing up." },
       { id: "core", name: "Core", description: "Typical mixed journey without a dominant failure pattern." },
-      { id: "tester", name: "Tester", description: "Created in Tester Mode." },
+      { id: "tester", name: "Tester", description: "Created in Experience Studio." },
     ],
   },
   "mobile-demo": {
@@ -155,16 +164,20 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     productTagline: "A calmer daily wellness practice — on iOS & Android",
     productDescription: "Aurelia wellness app — sessions, day-1 return, and Aurelia+ on iOS & Android.",
     platform: "mobile",
+    retentionEvent: {
+      name: "returned_next_day or any later app open",
+      description: "Day-N retention counts users with activity N calendar days after firstSeen (UTC).",
+    },
     primaryGoal: {
       id: "activation",
       name: "Activated return",
-      description: "Completed a first session and returned the next day",
+      description: "Completed a first session and returned the next day.",
       requiredEvents: [MOBILE_EVENTS.coreActionCompleted, MOBILE_EVENTS.returnedNextDay],
     },
     secondaryGoal: {
       id: "paid",
       name: "Subscription",
-      description: "Started a trial or purchased Aurelia+",
+      description: "Started a trial or purchased Aurelia+.",
       requiredEvents: [MOBILE_EVENTS.trialStarted, MOBILE_EVENTS.subscriptionPurchased],
     },
     funnels: [
@@ -172,7 +185,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
         id: "marketing",
         name: "Marketing funnel",
         kind: "marketing",
-        description: "Install → onboarding → account (acquisition into the product)",
+        description: "Install → onboarding → account",
         steps: [
           { eventName: MOBILE_EVENTS.appOpened, label: "App opened", conversionValue: 0 },
           { eventName: MOBILE_EVENTS.onboardingViewed, label: "Onboarding viewed", conversionValue: 1 },
@@ -184,7 +197,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
         id: "monetization",
         name: "Monetization funnel",
         kind: "monetization",
-        description: "Value → return → trial, with SKAN conversion values",
+        description: "Value → return → trial",
         steps: [
           { eventName: MOBILE_EVENTS.coreActionCompleted, label: "Session completed", conversionValue: 10 },
           { eventName: MOBILE_EVENTS.returnedNextDay, label: "Returned next day", conversionValue: 20 },
@@ -206,7 +219,7 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
       { id: "early-paywall", name: "Early paywall", description: "Sees/dismisses paywall before first value." },
       { id: "permission-denied", name: "Permission denied", description: "Declines notifications; quieter return path." },
       { id: "core", name: "Core", description: "Typical mixed journey." },
-      { id: "tester", name: "Tester", description: "Created in Tester Mode." },
+      { id: "tester", name: "Tester", description: "Created in Experience Studio." },
     ],
   },
 };
@@ -218,4 +231,27 @@ export function isWorkspaceId(value: string | null | undefined): value is Worksp
 export function getWorkspace(id: string): WorkspaceConfig {
   if (!isWorkspaceId(id)) return WORKSPACES["web-demo"];
   return WORKSPACES[id];
+}
+
+/** Device/platform filter options for UI */
+export function filterOptionsFor(workspaceId: WorkspaceId) {
+  if (workspaceId === "web-demo") {
+    return {
+      label: "Device type",
+      options: [
+        { id: "", label: "All devices" },
+        { id: "desktop", label: "Desktop" },
+        { id: "tablet", label: "Tablet" },
+        { id: "mobile-web", label: "Mobile web" },
+      ],
+    };
+  }
+  return {
+    label: "Platform",
+    options: [
+      { id: "", label: "All platforms" },
+      { id: "ios", label: "iOS" },
+      { id: "android", label: "Android" },
+    ],
+  };
 }

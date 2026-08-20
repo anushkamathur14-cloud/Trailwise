@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/layout/page-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { DeviceFilter } from "@/components/device-filter";
 import { useApi } from "@/hooks/use-api";
 import { useWorkspace } from "@/components/workspace-provider";
 import { formatDateTime } from "@/lib/utils";
@@ -30,10 +31,13 @@ type PeopleResponse = {
 };
 
 export default function UsersPage() {
-  const { workspace } = useWorkspace();
+  const { workspace, workspaceId } = useWorkspace();
   const [q, setQ] = useState("");
   const [segment, setSegment] = useState("");
-  const qs = [`q=${encodeURIComponent(q)}`, segment && `segment=${segment}`].filter(Boolean).join("&");
+  const [device, setDevice] = useState("");
+  const qs = [`q=${encodeURIComponent(q)}`, segment && `segment=${segment}`, device && `device=${device}`]
+    .filter(Boolean)
+    .join("&");
   const { data, loading, error } = useApi<PeopleResponse>(`/api/users?${qs}`, qs);
 
   return (
@@ -57,6 +61,7 @@ export default function UsersPage() {
             </option>
           ))}
         </select>
+        <DeviceFilter workspaceId={workspaceId} value={device} onChange={setDevice} />
       </div>
       {segment && (
         <p className="mb-3 text-sm text-muted-foreground">
