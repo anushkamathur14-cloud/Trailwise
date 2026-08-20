@@ -99,22 +99,18 @@ Repo: [anushkamathur14-cloud/Trailwise](https://github.com/anushkamathur14-cloud
 
 ### Vercel (frontend + API)
 
-SQLite does **not** persist on Vercel’s serverless filesystem. Use a hosted Postgres database (Neon, Supabase, Vercel Postgres, etc.).
+SQLite on Vercel works for this demo via a bundled `prisma/demo.db` copied to `/tmp` on cold start.
 
 1. Import the GitHub repo in [Vercel](https://vercel.com).
-2. In Project → Settings → Environment Variables, set:
-   - `DATABASE_URL` — Postgres connection string (use the Prisma/`schema=public` form if required)
+2. Set environment variables:
    - `SESSION_SECRET` — long random string (`openssl rand -base64 32`)
    - Optional: `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`
-3. Change Prisma `provider` from `sqlite` to `postgresql` in [`prisma/schema.prisma`](prisma/schema.prisma) before deploying, or keep a Postgres-ready branch.
-4. After the first deploy, run against the remote DB:
-   ```bash
-   DATABASE_URL="postgresql://..." npx prisma db push
-   DATABASE_URL="postgresql://..." npm run db:seed
-   ```
-5. Health check: `GET /api/health` on your Vercel URL.
+   - Do **not** set `DATABASE_URL` unless you are using Postgres — the app defaults to the bundled SQLite demo DB on Vercel.
+3. Build command is `npm run build` (generates Prisma client, prepares `demo.db`, then builds Next.js).
+4. After deploy, open `/api/health` — you should see `"ok": true` with people/events counts.
+5. For durable production data later, switch Prisma to `postgresql` and set `DATABASE_URL`.
 
-Do not seed production with demo people unless that is intentional. Keep demo SQLite files out of production disks.
+Do not seed a real production database with demo people unless that is intentional.
 
 ## Privacy limitations
 

@@ -12,11 +12,16 @@ export function useApi<T>(path: string, extraKey = "") {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
     const url = path.includes("?") ? `${path}&workspace=${workspaceId}` : `${path}?workspace=${workspaceId}`;
     fetch(url)
       .then(async (response) => {
-        if (!response.ok) throw new Error("Request failed");
-        return response.json() as Promise<T>;
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          const detail = typeof json?.detail === "string" ? json.detail : typeof json?.error === "string" ? json.error : "Request failed";
+          throw new Error(detail);
+        }
+        return json as T;
       })
       .then((json) => {
         if (!cancelled) {
@@ -25,7 +30,10 @@ export function useApi<T>(path: string, extraKey = "") {
         }
       })
       .catch((err: Error) => {
-        if (!cancelled) setError(err.message);
+        if (!cancelled) {
+          setData(null);
+          setError(err.message || "Request failed");
+        }
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

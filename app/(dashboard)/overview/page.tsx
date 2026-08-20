@@ -73,7 +73,14 @@ export default function OverviewPage() {
   const { data, loading, error } = useApi<Overview>(`/api/analytics/overview${qs ? `?${qs}` : ""}`, qs);
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading metrics from stored events…</p>;
-  if (error || !data) return <p className="text-sm text-rose-700">Could not load overview.</p>;
+  if (error || !data) {
+    return (
+      <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+        <p className="font-medium">Could not load overview.</p>
+        <p className="mt-1 text-rose-700">{error ?? "No data returned from /api/analytics/overview."}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
