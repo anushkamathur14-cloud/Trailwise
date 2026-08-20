@@ -22,6 +22,11 @@ export function ForgePreview({
   viewport,
   onEvent,
   onHeatChange,
+  onScreenChange,
+  interactive = true,
+  forceScreen,
+  overlayPoints,
+  recordClicks = true,
 }: {
   person: Person;
   recommended: boolean;
@@ -31,22 +36,46 @@ export function ForgePreview({
   viewport: ViewportMode;
   onEvent: (name: string) => void;
   onHeatChange?: (points: HeatPoint[]) => void;
+  onScreenChange?: (screen: string) => void;
+  interactive?: boolean;
+  forceScreen?: string;
+  /** When set, overlay uses these points instead of local heat (mirror view). */
+  overlayPoints?: Array<{ x: number; y: number }>;
+  recordClicks?: boolean;
 }) {
-  const [screen, setScreen] = useState<Screen>(previewId === "simplified-signup" ? "pricing" : "landing");
+  const [screen, setScreenState] = useState<Screen>(
+    (forceScreen as Screen) || (previewId === "simplified-signup" ? "pricing" : "landing"),
+  );
   const [error, setError] = useState(previewId === "error-recovery");
   const [heat, setHeat] = useState<HeatPoint[]>([]);
   const [email, setEmail] = useState("");
   const frameRef = useRef<HTMLDivElement>(null);
   const compact = viewport !== "desktop";
 
+  function setScreen(next: Screen) {
+    setScreenState(next);
+    onScreenChange?.(next);
+  }
+
   useEffect(() => {
-    void track(WEB_EVENTS.landingViewed);
+    if (forceScreen && SCREENS.includes(forceScreen as Screen)) {
+      setScreenState(forceScreen as Screen);
+    }
+  }, [forceScreen]);
+
+  useEffect(() => {
+    onScreenChange?.(screen);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    onHeatChange?.(heat);
-  }, [heat, onHeatChange]);
+    if (interactive) void track(WEB_EVENTS.landingViewed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (interactive) onHeatChange?.(heat);
+  }, [heat, onHeatChange, interactive]);
 
   async function track(eventName: string, extra?: Record<string, unknown>) {
     const response = await fetch("/api/events", {
@@ -71,11 +100,10 @@ export function ForgePreview({
   }
 
   function recordHeat(event: MouseEvent<HTMLDivElement>) {
-    if (!heatmapEnabled || !frameRef.current) return;
+    if (!interactive || !recordClicks || !frameRef.current) return;
     const rect = frameRef.current.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
-    // Slight scatter so overlapping attention forms organic blobs (classic heatmap look)
     const scatter: HeatPoint[] = [
       { x, y, screen },
       { x: clamp01(x + (Math.random() - 0.5) * 0.04), y: clamp01(y + (Math.random() - 0.5) * 0.04), screen },
@@ -85,6 +113,8 @@ export function ForgePreview({
     setHeat(next);
     void track("ui_click", { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), screen, heatmap: true, viewport });
   }
+
+  const displayHeat = overlayPoints ?? heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }));
 
   const copy = useMemo(() => {
     if (recommended && previewId === "earlier-integration") {
@@ -106,15 +136,10 @@ export function ForgePreview({
     <DeviceFrame viewport={viewport} urlLabel={`aurelia.example/${screen} · ${copy.note}`}>
       <div
         ref={frameRef}
-        className="relative min-h-[520px] bg-gradient-to-br from-[#f7f3ec] via-[#f3eee4] to-[#ebe3d6]"
+        className={`relative min-h-[520px] bg-gradient-to-br from-[#f7f3ec] via-[#f3eee4] to-[#ebe3d6] ${interactive ? "" : "pointer-events-none select-none"}`}
         onClickCapture={recordHeat}
       >
-        {heatmapEnabled && (
-          <HeatmapOverlay
-            enabled={heatmapEnabled}
-            points={heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }))}
-          />
-        )}
+        {heatmapEnabled && <HeatmapOverlay enabled={heatmapEnabled} points={displayHeat} />}
 
         <nav className={`relative z-10 flex items-center justify-between border-b border-[#e0d6c6] bg-[#faf7f1]/px-4 ${compact ? "px-4 py-3" : "px-8 py-4"}`}>
           <button

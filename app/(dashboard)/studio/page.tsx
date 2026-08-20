@@ -16,6 +16,7 @@ import { DeviceToolbar, type ViewportMode } from "@/components/studio/device-fra
 import { VARIANTS, type PreviewId } from "@/lib/studio/variants";
 import { hashPii } from "@/lib/privacy/hash";
 import { recommendFromHeatmapSession, type HeatLinkedRecommendation } from "@/lib/recommendations/heatmap";
+import { syntheticHeatForScreen } from "@/lib/studio/synthetic-heat";
 import { useApi } from "@/hooks/use-api";
 import { formatPercent } from "@/lib/utils";
 
@@ -72,6 +73,9 @@ function StudioInner() {
   const [viewport, setViewport] = useState<ViewportMode>(workspace.platform === "mobile" ? "mobile" : "desktop");
   const [ecosystem, setEcosystem] = useState<Ecosystem>("all");
   const [heat, setHeat] = useState<HeatPoint[]>([]);
+  const [currentScreen, setCurrentScreen] = useState(
+    workspace.platform === "web" ? "landing" : "welcome",
+  );
   const [status, setStatus] = useState<string | null>(null);
   const variant = VARIANTS[preview] ?? VARIANTS.original;
 
@@ -86,6 +90,7 @@ function StudioInner() {
 
   useEffect(() => {
     setViewport(workspace.platform === "mobile" ? "mobile" : "desktop");
+    setCurrentScreen(workspace.platform === "web" ? "landing" : "welcome");
   }, [workspace.platform]);
 
   useEffect(() => {
@@ -99,6 +104,12 @@ function StudioInner() {
       })
       .catch((error: Error) => setStatus(error.message));
   }, [params]);
+
+  const mirrorHeatPoints = useMemo(() => {
+    const synthetic = syntheticHeatForScreen(currentScreen, workspace.platform === "web" ? "web" : "mobile");
+    const live = heat.filter((point) => point.screen === currentScreen).map(({ x, y }) => ({ x, y }));
+    return [...synthetic, ...live];
+  }, [currentScreen, heat, workspace.platform]);
 
   async function createTester() {
     setStatus(null);
@@ -193,14 +204,14 @@ function StudioInner() {
     setMode("recommended");
   }
 
-  function renderPreview() {
+  function renderLivePreview() {
     if (!person) {
       return (
         <div className="flex min-h-[420px] flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-border bg-muted/30 p-8 text-center">
           <div>
-            <h3 className="text-lg font-semibold">Launch an interactive Aurelia session</h3>
+            <h3 className="text-lg font-semibold">Live interaction</h3>
             <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Click through the {workspace.platform === "web" ? "website" : "app"} like a real user. With heatmap on, compare your session to historic {workspace.platform === "web" ? "web" : "app"} behaviour.
+              Start a tester, then click through Aurelia here. The right panel mirrors this screen with a synthetic + live heatmap.
             </p>
           </div>
           <Button onClick={createTester}>Start Tester Mode</Button>
@@ -208,32 +219,45 @@ function StudioInner() {
       );
     }
     const recommended = mode === "recommended" && preview !== "original";
-    if (workspace.platform === "web") {
+    const shared = {
+      person,
+      recommended,
+      previewId: preview,
+      workspaceId,
+      viewport,
+      onEvent: (name: string) => setLog((c) => [name, ...c]),
+      onHeatChange,
+      onScreenChange: setCurrentScreen,
+      recordClicks: true as const,
+      heatmapEnabled: false,
+      interactive: true as const,
+    };
+    return workspace.platform === "web" ? <ForgePreview {...shared} /> : <AureliaPreview {...shared} />;
+  }
+
+  function renderHeatmapMirror() {
+    if (!person) {
       return (
-        <ForgePreview
-          person={person}
-          recommended={recommended}
-          previewId={preview}
-          workspaceId={workspaceId}
-          heatmapEnabled={heatmapEnabled}
-          viewport={viewport}
-          onEvent={(name) => setLog((c) => [name, ...c])}
-          onHeatChange={onHeatChange}
-        />
+        <div className="flex min-h-[420px] flex-col items-center justify-center rounded-xl border border-dashed border-border bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+          Heatmap mirror appears after you start a tester — synthetic attention for this screen, plus your live taps.
+        </div>
       );
     }
-    return (
-      <AureliaPreview
-        person={person}
-        recommended={recommended}
-        previewId={preview}
-        workspaceId={workspaceId}
-        heatmapEnabled={heatmapEnabled}
-        viewport={viewport}
-        onEvent={(name) => setLog((c) => [name, ...c])}
-        onHeatChange={onHeatChange}
-      />
-    );
+    const recommended = mode === "recommended" && preview !== "original";
+    const shared = {
+      person,
+      recommended,
+      previewId: preview,
+      workspaceId,
+      viewport,
+      onEvent: (_name: string) => undefined,
+      forceScreen: currentScreen,
+      overlayPoints: mirrorHeatPoints,
+      heatmapEnabled: heatmapEnabled,
+      interactive: false as const,
+      recordClicks: false as const,
+    };
+    return workspace.platform === "web" ? <ForgePreview {...shared} /> : <AureliaPreview {...shared} />;
   }
 
   return (
@@ -377,31 +401,49 @@ function StudioInner() {
         </Card>
       )}
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
-        <div className="min-w-0">{renderPreview()}</div>
-        <div className="space-y-4">
-          <Card>
-            <CardHeader><CardTitle>Variant under test</CardTitle></CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="font-medium">{variant.label}</div>
-              <p className="text-muted-foreground">{variant.hypothesis}</p>
-              <p>Target: {variant.targetMetric}</p>
-              <p>Guardrail: {variant.guardrail}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader><CardTitle>Event trail</CardTitle></CardHeader>
-            <CardContent>
-              <ul className="max-h-56 space-y-1 overflow-auto text-xs">
-                {log.length === 0 ? (
-                  <li className="text-muted-foreground">None yet — interact with Aurelia.</li>
-                ) : (
-                  log.map((item, index) => <li key={index}>{item}</li>)
-                )}
-              </ul>
-            </CardContent>
-          </Card>
-        </div>
+      <div className="mb-4 grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Live interaction</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Click through Aurelia here · screen: <span className="font-medium text-foreground">{currentScreen}</span>
+            </p>
+          </CardHeader>
+          <CardContent className="min-w-0">{renderLivePreview()}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle>Heatmap view</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Same page with synthetic historic attention{heat.filter((p) => p.screen === currentScreen).length ? " + your live taps" : ""}
+            </p>
+          </CardHeader>
+          <CardContent className="min-w-0">{renderHeatmapMirror()}</CardContent>
+        </Card>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Variant under test</CardTitle></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="font-medium">{variant.label}</div>
+            <p className="text-muted-foreground">{variant.hypothesis}</p>
+            <p>Target: {variant.targetMetric}</p>
+            <p>Guardrail: {variant.guardrail}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Event trail</CardTitle></CardHeader>
+          <CardContent>
+            <ul className="max-h-56 space-y-1 overflow-auto text-xs">
+              {log.length === 0 ? (
+                <li className="text-muted-foreground">None yet — interact with Aurelia on the left.</li>
+              ) : (
+                log.map((item, index) => <li key={index}>{item}</li>)
+              )}
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

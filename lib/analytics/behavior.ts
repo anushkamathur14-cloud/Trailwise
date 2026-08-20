@@ -27,22 +27,46 @@ export async function behaviorCompare(
     : null;
   const personIds = people?.map((p) => p.id);
 
-  const events = await db.event.findMany({
+  const rows = await db.event.findMany({
     where: {
       workspaceId,
       timestamp: { gte: range.from, lte: range.to },
       ...(personIds ? { personId: { in: personIds } } : {}),
-      source: { not: "tester" },
     },
-    select: { eventName: true, propertiesJson: true, contextJson: true },
+    select: { eventName: true, propertiesJson: true, contextJson: true, source: true },
     take: 50_000,
   });
+
+  const filtered = rows.filter((event) => event.source !== "tester");
 
   const byEvent = new Map<string, number>();
   const byScreen = new Map<string, number>();
   let heatSamples = 0;
 
-  for (const event of events) {
+  const eventToScreen: Record<string, string> = {
+    app_opened: "welcome",
+    onboarding_viewed: "welcome",
+    goal_selected: "goal",
+    notification_permission_requested: "permissions",
+    notification_permission_granted: "permissions",
+    notification_permission_denied: "permissions",
+    session_started: "session",
+    session_completed: "session",
+    session_abandoned: "session",
+    paywall_viewed: "paywall",
+    paywall_dismissed: "paywall",
+    trial_started: "paywall",
+    landing_viewed: "landing",
+    pricing_viewed: "pricing",
+    signup_started: "signup",
+    account_created: "signup",
+    project_created: "plan",
+    teammate_invited: "invite",
+    integration_connected: "wearable",
+    integration_error: "wearable",
+  };
+
+  for (const event of filtered) {
     byEvent.set(event.eventName, (byEvent.get(event.eventName) ?? 0) + 1);
     try {
       const context = JSON.parse(event.contextJson || "{}") as Record<string, unknown>;
@@ -50,16 +74,17 @@ export async function behaviorCompare(
       const screen =
         (typeof props.screen === "string" && props.screen) ||
         (typeof context.screenName === "string" && context.screenName) ||
+        eventToScreen[event.eventName] ||
         (typeof context.pageTitle === "string" && String(context.pageTitle).replace(/\s+/g, "_")) ||
         event.eventName;
       byScreen.set(screen, (byScreen.get(screen) ?? 0) + 1);
       if (event.eventName === "ui_click" || props.heatmap) heatSamples += 1;
     } catch {
-      byScreen.set(event.eventName, (byScreen.get(event.eventName) ?? 0) + 1);
+      byScreen.set(eventToScreen[event.eventName] ?? event.eventName, (byScreen.get(event.eventName) ?? 0) + 1);
     }
   }
 
-  const totalEvents = events.length || 1;
+  const totalEvents = filtered.length || 1;
   const topEvents = [...byEvent.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
@@ -71,7 +96,7 @@ export async function behaviorCompare(
 
   return {
     ecosystem,
-    totalEvents: events.length,
+    totalEvents: filtered.length,
     heatSamples,
     topEvents,
     topScreens,

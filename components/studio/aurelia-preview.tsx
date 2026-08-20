@@ -23,6 +23,11 @@ export function AureliaPreview({
   viewport,
   onEvent,
   onHeatChange,
+  onScreenChange,
+  interactive = true,
+  forceScreen,
+  overlayPoints,
+  recordClicks = true,
 }: {
   person: Person;
   recommended: boolean;
@@ -32,16 +37,39 @@ export function AureliaPreview({
   viewport: ViewportMode;
   onEvent: (name: string) => void;
   onHeatChange?: (points: HeatPoint[]) => void;
+  onScreenChange?: (screen: string) => void;
+  interactive?: boolean;
+  forceScreen?: string;
+  overlayPoints?: Array<{ x: number; y: number }>;
+  recordClicks?: boolean;
 }) {
-  const [screen, setScreen] = useState<Screen>(previewId === "first-session-nudge" && recommended ? "session" : "welcome");
+  const [screen, setScreenState] = useState<Screen>(
+    (forceScreen as Screen) || (previewId === "first-session-nudge" && recommended ? "session" : "welcome"),
+  );
   const [heat, setHeat] = useState<HeatPoint[]>([]);
   const [breath, setBreath] = useState(0);
   const frameRef = useRef<HTMLDivElement>(null);
   const wide = viewport === "desktop";
 
+  function setScreen(next: Screen) {
+    setScreenState(next);
+    onScreenChange?.(next);
+  }
+
   useEffect(() => {
-    onHeatChange?.(heat);
-  }, [heat, onHeatChange]);
+    if (forceScreen && SCREENS.includes(forceScreen as Screen)) {
+      setScreenState(forceScreen as Screen);
+    }
+  }, [forceScreen]);
+
+  useEffect(() => {
+    onScreenChange?.(screen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (interactive) onHeatChange?.(heat);
+  }, [heat, onHeatChange, interactive]);
 
   async function track(eventName: string, extra?: Record<string, unknown>) {
     const response = await fetch("/api/events", {
@@ -66,7 +94,7 @@ export function AureliaPreview({
   }
 
   function recordHeat(event: MouseEvent<HTMLDivElement>) {
-    if (!heatmapEnabled || !frameRef.current) return;
+    if (!interactive || !recordClicks || !frameRef.current) return;
     const rect = frameRef.current.getBoundingClientRect();
     const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
@@ -79,6 +107,8 @@ export function AureliaPreview({
     setHeat(next);
     void track("ui_click", { x: Number(x.toFixed(3)), y: Number(y.toFixed(3)), screen, heatmap: true, viewport });
   }
+
+  const displayHeat = overlayPoints ?? heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }));
 
   const note = useMemo(() => {
     if (recommended && previewId === "delayed-paywall") return "Paywall after first value";
@@ -93,16 +123,10 @@ export function AureliaPreview({
     <DeviceFrame viewport={viewport} urlLabel={`aurelia.app · ${screen} · ${note}`}>
       <div
         ref={frameRef}
-        className={`relative overflow-hidden ${wide ? "min-h-[560px] bg-gradient-to-br from-[#f5f0e8] via-[#efe8dc] to-[#e8dfd0]" : "min-h-[560px] bg-[#f7f3ec]"}`}
+        className={`relative overflow-hidden ${interactive ? "" : "pointer-events-none select-none"} ${wide ? "min-h-[560px] bg-gradient-to-br from-[#f5f0e8] via-[#efe8dc] to-[#e8dfd0]" : "min-h-[560px] bg-[#f7f3ec]"}`}
         onClickCapture={recordHeat}
       >
-        {heatmapEnabled && (
-          <HeatmapOverlay
-            enabled={heatmapEnabled}
-            points={heat.filter((point) => point.screen === screen).map(({ x, y }) => ({ x, y }))}
-            radius={64}
-          />
-        )}
+        {heatmapEnabled && <HeatmapOverlay enabled={heatmapEnabled} points={displayHeat} radius={64} />}
 
         <div className={`relative z-10 ${wide ? "mx-auto grid max-w-4xl gap-8 p-8 md:grid-cols-[1fr_1.1fr]" : "px-5 py-6"}`}>
           {wide && (
