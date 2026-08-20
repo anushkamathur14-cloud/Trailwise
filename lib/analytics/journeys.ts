@@ -5,25 +5,23 @@ export type PathEvent = {
 };
 
 export type JourneyGraph = {
-  nodes: Array<{ id: string; label: string; count: number }>;
+  nodes: Array<{ id: string; label: string; count: number; step: number; eventName: string }>;
   links: Array<{ source: string; target: string; value: number }>;
   successfulPath: string[];
   failurePath: string[];
+  explanation: string;
 };
 
-const FAILURE_HINTS = [
-  "abandoned",
-  "error",
-  "denied",
-  "dismissed",
-  "canceled",
-  "skipped",
-];
+const FAILURE_HINTS = ["abandoned", "error", "denied", "dismissed", "canceled", "skipped"];
 
 function isFailure(eventName: string): boolean {
   return FAILURE_HINTS.some((hint) => eventName.includes(hint));
 }
 
+/**
+ * Build a layered (acyclic) journey graph.
+ * Nodes are step-indexed (`0:landing_viewed`) so revisits cannot create cycles for Sankey.
+ */
 export function buildJourneyGraph(
   events: PathEvent[],
   options: { start: string; end?: string; maxSteps: number },
@@ -35,7 +33,7 @@ export function buildJourneyGraph(
     byPerson.set(event.personId, list);
   }
 
-  const nodeCounts = new Map<string, number>();
+  const nodeCounts = new Map<string, { count: number; step: number; eventName: string }>();
   const linkCounts = new Map<string, number>();
   const pathCounts = new Map<string, { path: string[]; count: number; converted: number }>();
 
@@ -52,9 +50,15 @@ export function buildJourneyGraph(
       if (names.length >= options.maxSteps) break;
     }
     if (names.length === 0) continue;
-    for (const name of names) nodeCounts.set(name, (nodeCounts.get(name) ?? 0) + 1);
+
+    for (let step = 0; step < names.length; step++) {
+      const id = `${step}:${names[step]}`;
+      const current = nodeCounts.get(id) ?? { count: 0, step, eventName: names[step] };
+      current.count += 1;
+      nodeCounts.set(id, current);
+    }
     for (let i = 0; i < names.length - 1; i++) {
-      const key = `${names[i]}→${names[i + 1]}`;
+      const key = `${i}:${names[i]}→${i + 1}:${names[i + 1]}`;
       linkCounts.set(key, (linkCounts.get(key) ?? 0) + 1);
     }
     const pathKey = names.join("→");
@@ -73,10 +77,12 @@ export function buildJourneyGraph(
     .sort((a, b) => b.count - a.count)[0];
 
   return {
-    nodes: [...nodeCounts.entries()].map(([id, count]) => ({
+    nodes: [...nodeCounts.entries()].map(([id, meta]) => ({
       id,
-      label: id.replace(/_/g, " "),
-      count,
+      label: `${meta.step + 1}. ${meta.eventName.replace(/_/g, " ")}`,
+      count: meta.count,
+      step: meta.step,
+      eventName: meta.eventName,
     })),
     links: [...linkCounts.entries()].map(([key, value]) => {
       const [source, target] = key.split("→");
@@ -84,5 +90,7 @@ export function buildJourneyGraph(
     }),
     successfulPath: successful?.path ?? [],
     failurePath: failure?.path ?? [],
+    explanation:
+      "Each column is a step from your start event. The same event name can appear in multiple columns if it occurs at different depths. Flows never loop, so the Sankey stays readable.",
   };
 }

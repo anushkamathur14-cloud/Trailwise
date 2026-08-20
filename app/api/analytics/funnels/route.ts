@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     const workspaceId = workspaceFrom(request);
     const range = rangeFrom(request);
     const url = new URL(request.url);
-    const funnelId = url.searchParams.get("funnel") ?? "activation";
+    const funnelId = url.searchParams.get("funnel") ?? "marketing";
     const step = url.searchParams.get("abandonedStep");
     const data = await funnelQuery(prisma, workspaceId, funnelId, range, {
       channel: range.channel,

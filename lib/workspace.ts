@@ -42,11 +42,25 @@ export const MOBILE_EVENTS = {
   identityMerged: "identity_merged",
 } as const;
 
+export type FunnelStep = {
+  eventName: string;
+  label: string;
+  /** Coarse conversion value for SKAN / monetization scoring (0–63). */
+  conversionValue: number;
+};
+
+export type SegmentDefinition = {
+  id: string;
+  name: string;
+  description: string;
+};
+
 export type WorkspaceConfig = {
   id: WorkspaceId;
   name: string;
   productName: string;
   productTagline: string;
+  productDescription: string;
   platform: "web" | "mobile";
   primaryGoal: {
     id: string;
@@ -63,14 +77,15 @@ export type WorkspaceConfig = {
   funnels: Array<{
     id: string;
     name: string;
+    kind: "marketing" | "monetization";
     description: string;
-    steps: Array<{ eventName: string; label: string }>;
+    steps: FunnelStep[];
   }>;
   defaultJourney: { start: string; end: string };
   acquisitionChannels: string[];
   devices: string[];
   countries: string[];
-  segments: string[];
+  segments: SegmentDefinition[];
 };
 
 export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
@@ -79,6 +94,8 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     name: "Web Demo",
     productName: "Forge",
     productTagline: "Ship internal tools without the waiting list",
+    productDescription:
+      "Forge is a fictional B2B SaaS for building internal tools. Marketing drives visitors to pricing and sign-up; product activation is connecting an integration, creating a first project, and inviting a teammate. Monetization is starting a Team subscription.",
     platform: "web",
     primaryGoal: {
       id: "activation",
@@ -94,27 +111,29 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     },
     funnels: [
       {
-        id: "activation",
-        name: "Activation funnel",
-        description: "Landing to first project and teammate invite",
+        id: "marketing",
+        name: "Marketing funnel",
+        kind: "marketing",
+        description: "Acquisition path from landing through account creation",
         steps: [
-          { eventName: WEB_EVENTS.landingViewed, label: "Landing viewed" },
-          { eventName: WEB_EVENTS.signupStarted, label: "Sign-up started" },
-          { eventName: WEB_EVENTS.accountCreated, label: "Account created" },
-          { eventName: WEB_EVENTS.onboardingStarted, label: "Onboarding started" },
-          { eventName: WEB_EVENTS.integrationConnected, label: "Integration connected" },
-          { eventName: WEB_EVENTS.projectCreated, label: "Project created" },
-          { eventName: WEB_EVENTS.teammateInvited, label: "Teammate invited" },
+          { eventName: WEB_EVENTS.landingViewed, label: "Landing viewed", conversionValue: 0 },
+          { eventName: WEB_EVENTS.pricingViewed, label: "Pricing viewed", conversionValue: 1 },
+          { eventName: WEB_EVENTS.signupStarted, label: "Sign-up started", conversionValue: 2 },
+          { eventName: WEB_EVENTS.accountCreated, label: "Account created", conversionValue: 3 },
         ],
       },
       {
-        id: "revenue",
-        name: "Revenue funnel",
-        description: "Account created to paid subscription",
+        id: "monetization",
+        name: "Monetization funnel",
+        kind: "monetization",
+        description: "From account to paid subscription, with SKAN-style conversion values",
         steps: [
-          { eventName: WEB_EVENTS.accountCreated, label: "Account created" },
-          { eventName: WEB_EVENTS.upgradeViewed, label: "Upgrade viewed" },
-          { eventName: WEB_EVENTS.subscriptionStarted, label: "Subscription started" },
+          { eventName: WEB_EVENTS.accountCreated, label: "Account created", conversionValue: 3 },
+          { eventName: WEB_EVENTS.integrationConnected, label: "Integration connected", conversionValue: 8 },
+          { eventName: WEB_EVENTS.projectCreated, label: "Project created", conversionValue: 16 },
+          { eventName: WEB_EVENTS.teammateInvited, label: "Teammate invited", conversionValue: 32 },
+          { eventName: WEB_EVENTS.upgradeViewed, label: "Upgrade viewed", conversionValue: 40 },
+          { eventName: WEB_EVENTS.subscriptionStarted, label: "Subscription started", conversionValue: 63 },
         ],
       },
     ],
@@ -122,13 +141,21 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     acquisitionChannels: ["google", "linkedin", "direct", "producthunt", "referral"],
     devices: ["desktop", "mobile-web", "tablet"],
     countries: ["US", "GB", "DE", "IN", "CA", "AU"],
-    segments: ["high-intent", "error-prone", "window-shopper", "core"],
+    segments: [
+      { id: "high-intent", name: "High intent", description: "Connects an integration early and often activates." },
+      { id: "error-prone", name: "Error-prone", description: "Hits integration errors; higher onboarding abandon." },
+      { id: "window-shopper", name: "Window shopper", description: "Repeats pricing views without signing up." },
+      { id: "core", name: "Core", description: "Typical mixed journey without a dominant failure pattern." },
+      { id: "tester", name: "Tester", description: "Created in Experience Studio / Tester Mode." },
+    ],
   },
   "mobile-demo": {
     id: "mobile-demo",
     name: "Mobile App Demo",
     productName: "Aurelia",
     productTagline: "A calmer daily wellness practice",
+    productDescription:
+      "Aurelia is a fictional wellness app. Users pick a goal (sleep, focus, stress), complete a short practice session, and ideally return the next day. Monetization is Aurelia+ trial or purchase. SKAN conversion values map to these milestones for iOS attribution demos.",
     platform: "mobile",
     primaryGoal: {
       id: "activation",
@@ -144,26 +171,28 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     },
     funnels: [
       {
-        id: "activation",
-        name: "Activation funnel",
-        description: "App open through first session and next-day return",
+        id: "marketing",
+        name: "Marketing funnel",
+        kind: "marketing",
+        description: "Install → onboarding → account (acquisition into the product)",
         steps: [
-          { eventName: MOBILE_EVENTS.appOpened, label: "App opened" },
-          { eventName: MOBILE_EVENTS.onboardingViewed, label: "Onboarding viewed" },
-          { eventName: MOBILE_EVENTS.goalSelected, label: "Goal selected" },
-          { eventName: MOBILE_EVENTS.accountCreated, label: "Account created" },
-          { eventName: MOBILE_EVENTS.coreActionCompleted, label: "Session completed" },
-          { eventName: MOBILE_EVENTS.returnedNextDay, label: "Returned next day" },
+          { eventName: MOBILE_EVENTS.appOpened, label: "App opened", conversionValue: 0 },
+          { eventName: MOBILE_EVENTS.onboardingViewed, label: "Onboarding viewed", conversionValue: 1 },
+          { eventName: MOBILE_EVENTS.goalSelected, label: "Goal selected", conversionValue: 2 },
+          { eventName: MOBILE_EVENTS.accountCreated, label: "Account created", conversionValue: 3 },
         ],
       },
       {
-        id: "revenue",
+        id: "monetization",
         name: "Monetization funnel",
-        description: "First session to trial or purchase",
+        kind: "monetization",
+        description: "Value → return → trial, with SKAN conversion values",
         steps: [
-          { eventName: MOBILE_EVENTS.coreActionCompleted, label: "Session completed" },
-          { eventName: MOBILE_EVENTS.paywallViewed, label: "Paywall viewed" },
-          { eventName: MOBILE_EVENTS.trialStarted, label: "Trial started" },
+          { eventName: MOBILE_EVENTS.coreActionCompleted, label: "Session completed", conversionValue: 10 },
+          { eventName: MOBILE_EVENTS.returnedNextDay, label: "Returned next day", conversionValue: 20 },
+          { eventName: MOBILE_EVENTS.paywallViewed, label: "Paywall viewed", conversionValue: 30 },
+          { eventName: MOBILE_EVENTS.trialStarted, label: "Trial started", conversionValue: 40 },
+          { eventName: MOBILE_EVENTS.subscriptionPurchased, label: "Subscription purchased", conversionValue: 63 },
         ],
       },
     ],
@@ -174,7 +203,13 @@ export const WORKSPACES: Record<WorkspaceId, WorkspaceConfig> = {
     acquisitionChannels: ["app-store", "tiktok", "instagram", "referral", "organic"],
     devices: ["iphone", "android"],
     countries: ["US", "GB", "BR", "JP", "DE", "IN"],
-    segments: ["fast-starter", "early-paywall", "permission-denied", "core"],
+    segments: [
+      { id: "fast-starter", name: "Fast starter", description: "Completes a session quickly and often returns next day." },
+      { id: "early-paywall", name: "Early paywall", description: "Sees/dismisses paywall before first value." },
+      { id: "permission-denied", name: "Permission denied", description: "Declines notifications; quieter return path." },
+      { id: "core", name: "Core", description: "Typical mixed journey." },
+      { id: "tester", name: "Tester", description: "Created in Experience Studio / Tester Mode." },
+    ],
   },
 };
 

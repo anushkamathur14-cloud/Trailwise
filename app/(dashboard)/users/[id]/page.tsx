@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatDateTime } from "@/lib/utils";
 import { useApi } from "@/hooks/use-api";
+import { hashPii, maskEmail } from "@/lib/privacy/hash";
+import { useWorkspace } from "@/components/workspace-provider";
 
 type Profile = {
   person: {
@@ -31,24 +33,28 @@ type Profile = {
 
 export default function UserDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { data, loading } = useApi<Profile>(`/api/users/${id}`, id);
+  const { workspace } = useWorkspace();
+  const { data, loading, error } = useApi<Profile>(`/api/users/${id}`, id);
 
-  if (loading || !data) return <p className="text-sm text-muted-foreground">Loading profile…</p>;
+  if (loading) return <p className="text-sm text-muted-foreground">Loading profile…</p>;
+  if (error || !data) return <p className="text-sm text-rose-700">{error ?? "Profile not found."}</p>;
 
   async function remove() {
     await fetch(`/api/users/${id}`, { method: "DELETE" });
     window.location.href = "/users";
   }
 
+  const title = hashPii(data.person.userId || data.person.anonymousId || data.person.displayName);
+
   return (
     <div>
       <PageHeader
-        title={data.person.displayName || data.person.userId || data.person.anonymousId || "Person"}
-        description="Identity, consent, computed traits, chronological timeline, and the next-best-action for this profile."
+        title={title}
+        description="Identity merge, consent, traits, timeline, and next-best-action. Names and emails are hashed/masked in the UI."
         actions={
           <div className="flex gap-2">
             <Button asChild>
-              <Link href={`/studio?personId=${id}&preview=${data.recommendation.previewId}`}>Preview recommended journey</Link>
+              <Link href={`/studio?personId=${id}&preview=${data.recommendation.previewId}`}>Preview in Experience Studio</Link>
             </Button>
             <Button variant="destructive" onClick={remove}>
               Delete user data
@@ -62,9 +68,10 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
             <CardTitle>Profile</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <div>Anonymous ID: {data.person.anonymousId ?? "—"}</div>
-            <div>User ID: {data.person.userId ?? "still anonymous"}</div>
-            <div>Segment: {data.person.segment}</div>
+            <div>Anonymous ID: {hashPii(data.person.anonymousId)}</div>
+            <div>User ID: {data.person.userId ? hashPii(data.person.userId) : "still anonymous"}</div>
+            <div>Email: {maskEmail((data.person as { email?: string }).email)}</div>
+            <div>Persona: {workspace.segments.find((s) => s.id === data.person.segment)?.name ?? data.person.segment}</div>
             <div>Source: {data.person.acquisitionChannel}</div>
             <div>Consent: {data.person.consentState}</div>
             <div>First seen: {formatDateTime(data.person.firstSeenAt)}</div>
@@ -86,7 +93,7 @@ export default function UserDetailPage({ params }: { params: Promise<{ id: strin
               <ul className="space-y-2">
                 {data.person.aliases.map((alias) => (
                   <li key={alias.previousId} className="rounded-md bg-muted p-2">
-                    {alias.previousId} → {data.person.userId} ({alias.kind}) on {formatDateTime(alias.mergedAt)}
+                    {hashPii(alias.previousId)} → {hashPii(data.person.userId)} ({alias.kind}) on {formatDateTime(alias.mergedAt)}
                   </li>
                 ))}
               </ul>

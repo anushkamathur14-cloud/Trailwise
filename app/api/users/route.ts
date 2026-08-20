@@ -11,11 +11,13 @@ export async function GET(request: Request) {
     const cursor = url.searchParams.get("cursor") ?? undefined;
     const limit = Math.min(Number(url.searchParams.get("limit") ?? 40), 100);
     const testers = url.searchParams.get("testers") === "1";
+    const segment = url.searchParams.get("segment") || undefined;
 
     const people = await prisma.person.findMany({
       where: {
         workspaceId,
         ...(testers ? { isTester: true } : {}),
+        ...(segment ? { segment } : {}),
         ...(q
           ? {
               OR: [

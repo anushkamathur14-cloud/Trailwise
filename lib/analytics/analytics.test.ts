@@ -93,7 +93,8 @@ describe("journey paths", () => {
     );
     expect(graph.successfulPath).toEqual(["start", "mid", "end"]);
     expect(graph.failurePath[0]).toBe("start");
-    expect(graph.nodes.find((node) => node.id === "mid")?.count).toBe(1);
+    expect(graph.nodes.some((node) => node.id === "1:mid")).toBe(true);
+    expect(graph.links.every((link) => Number(link.source.split(":")[0]) < Number(link.target.split(":")[0]))).toBe(true);
   });
 });
 

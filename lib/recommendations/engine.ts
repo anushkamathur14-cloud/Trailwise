@@ -13,6 +13,10 @@ export type ProductRecommendation = {
   successMetric: string;
   experiment: string;
   previewId: string;
+  /** Short opportunity statement for Overview TLDR */
+  impact: string;
+  /** Quantified expectation for Overview TLDR */
+  expectedImpact: string;
 };
 
 export type UserRecommendation = {
@@ -52,6 +56,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         successMetric: "Activation rate (project created + teammate invited)",
         experiment: "Holdout 20% of new accounts on the current onboarding. Primary: activation. Guardrail: sign-up completion.",
         previewId: "earlier-integration",
+        impact: "First-session users stall on empty projects before connecting an integration — a major activation leak.",
+        expectedImpact: "+8–14% activation among new sign-ups (high confidence)",
       },
       {
         id: "web-invite-prompt",
@@ -66,6 +72,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         successMetric: "Teammate invite rate within 24 hours",
         experiment: "Show invite modal vs settings-only. Guardrail: project creation rate.",
         previewId: "invite-prompt",
+        impact: "High-intent users create a project then leave without inviting — activation never closes.",
+        expectedImpact: "+10–18% invite rate within 24h for project creators (medium confidence)",
       },
       {
         id: "web-error-recovery",
@@ -80,6 +88,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
         successMetric: "Onboarding completion after an error",
         experiment: "Error-recovery screen vs current dead-end. Guardrail: support tickets.",
         previewId: "error-recovery",
+        impact: "Integration errors dump users into a dead end and spike onboarding abandonment.",
+        expectedImpact: "+20–30% onboarding completion after error (high confidence)",
       },
     ];
   }
@@ -98,6 +108,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       successMetric: "Trial start rate",
       experiment: "Paywall after first session vs current first-session paywall. Guardrail: day-1 retention.",
       previewId: "delayed-paywall",
+      impact: "Early paywall interrupts first value and suppresses both trial starts and day-1 return.",
+      expectedImpact: "+12–20% trial starts; day-1 retention guardrail flat-to-up (high confidence)",
     },
     {
       id: "mobile-core-nudge",
@@ -112,6 +124,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       successMetric: "Session completion within 5 minutes",
       experiment: "Immediate session vs current multi-step onboarding. Guardrail: permission grant rate.",
       previewId: "first-session-nudge",
+      impact: "New installs browse goals but never complete a session in the first five minutes.",
+      expectedImpact: "+15–25% session completion in 5 minutes (high confidence)",
     },
     {
       id: "mobile-permission-alt",
@@ -126,6 +140,8 @@ export function productRecommendations(workspaceId: WorkspaceId): ProductRecomme
       successMetric: "Next-day return among permission-denied users",
       experiment: "Fallback reminder vs no fallback. Guardrail: uninstall proxy (session volume).",
       previewId: "permission-fallback",
+      impact: "Permission denials lose the reminder loop with no recovery path.",
+      expectedImpact: "+6–12% day-1 return among denials (medium confidence)",
     },
   ];
 }

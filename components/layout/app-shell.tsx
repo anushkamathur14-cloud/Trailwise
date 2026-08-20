@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  BookOpen,
   Compass,
   Database,
   FlaskConical,
   GitFork,
   LayoutDashboard,
   Lightbulb,
+  ListTree,
   Settings,
   Sparkles,
   Users,
@@ -26,7 +28,9 @@ const NAV = [
   { href: "/users", label: "Users", icon: Users },
   { href: "/signals", label: "Signals", icon: Lightbulb },
   { href: "/recommendations", label: "Recommendations", icon: Sparkles },
-  { href: "/studio", label: "Experience Studio", icon: FlaskConical },
+  { href: "/studio", label: "Tester Mode", icon: FlaskConical },
+  { href: "/events", label: "Event definitions", icon: ListTree },
+  { href: "/how-it-works", label: "How it works", icon: BookOpen },
   { href: "/sources", label: "Data sources", icon: Database },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
